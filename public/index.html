@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Region</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #1a1a1a;
+      color: #fff;
+      font-family: monospace;
+      overflow: hidden;
+    }
+    #world {
+      display: block;
+    }
+    #right_panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 232px;
+      height: 100%;
+      background: #3b3024;
+    }
+    #right_panel.hidden {
+      display: none;
+    }
+    #sidebar_content {
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="world" onselectstart="return false" oncontextmenu="return false"></canvas>
+  <div id="right_panel">
+    <div id="sidebar_content"></div>
+  </div>
+  <script src="bundle.js"></script>
+</body>
+</html>
