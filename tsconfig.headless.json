@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "./dist-headless",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "moduleResolution": "node"
+  },
+  "include": ["src/headless/**/*", "src/jad.ts", "src/jad-region.ts", "src/loadout.ts"],
+  "exclude": ["node_modules", "dist", "dist-headless", "src/index.ts"]
+}

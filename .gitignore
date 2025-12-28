@@ -1,3 +1,9 @@
+.venv/
+.python-version
+__pycache__/
+
+*.d.ts
+
 dist-browser/
 
 # Logs

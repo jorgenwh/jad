@@ -4,7 +4,9 @@
   "description": "Jad trainer simulation",
   "scripts": {
     "build": "webpack --mode development",
-    "start": "webpack serve --mode development --open"
+    "start": "webpack serve --mode development --open",
+    "build:headless": "tsc -p tsconfig.headless.json",
+    "headless": "node dist-headless/headless/bootstrap.js"
   },
   "dependencies": {
     "osrs-sdk": "0.1.4",

@@ -17,6 +17,15 @@ export class JadRegion extends Region {
     return 20;
   }
 
+  private _jad: Jad | null = null;
+
+  get jad(): Jad {
+    if (!this._jad) {
+      throw new Error('Jad not initialized');
+    }
+    return this._jad;
+  }
+
   initialiseRegion(): { player: Player } {
     const player = new Player(this, { x: 10, y: 5 });
     this.addPlayer(player);
@@ -25,8 +34,8 @@ export class JadRegion extends Region {
 
     this.addBoundaryBlockers();
 
-    const jad = new Jad(this, { x: 8, y: 15 }, { aggro: player });
-    this.addMob(jad);
+    this._jad = new Jad(this, { x: 8, y: 15 }, { aggro: player });
+    this.addMob(this._jad);
 
     return { player };
   }
