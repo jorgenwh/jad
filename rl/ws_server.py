@@ -123,7 +123,7 @@ async def main():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/final.pt",
+        default="checkpoints/best.pt",
         help="Path to agent checkpoint",
     )
     parser.add_argument(
