@@ -1,3 +1,4 @@
+dist-headless/
 checkpoints/
 .venv/
 .python-version

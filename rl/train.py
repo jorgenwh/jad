@@ -65,8 +65,7 @@ def compute_reward(
 def train(
     num_episodes: int = 1000,
     update_interval: int = 2048,
-    log_interval: int = 10,
-    save_interval: int = 100,
+    log_interval: int = 100,
     checkpoint_dir: str = "checkpoints",
 ):
     """
@@ -76,7 +75,6 @@ def train(
         num_episodes: Number of episodes to train
         update_interval: Steps between PPO updates
         log_interval: Episodes between logging
-        save_interval: Episodes between saving checkpoints
         checkpoint_dir: Directory for saving checkpoints
     """
     # Create checkpoint directory
@@ -92,6 +90,7 @@ def train(
     episode_lengths = []
     total_wins = 0
     interval_wins = 0
+    best_avg_reward = float('-inf')  # Track best model
 
     print(f"Training on device: {agent.device}")
     print(f"Starting training for {num_episodes} episodes...")
@@ -183,19 +182,23 @@ def train(
             if (episode + 1) % log_interval == 0:
                 avg_reward = np.mean(episode_rewards[-log_interval:])
                 avg_length = np.mean(episode_lengths[-log_interval:])
+
+                # Check if this is a new best
+                is_best = avg_reward > best_avg_reward
+                if is_best:
+                    best_avg_reward = avg_reward
+                    # Save best model (overwrite previous best)
+                    save_path = checkpoint_path / "best.pt"
+                    agent.save(str(save_path))
+
                 print(
                     f"Episode {episode + 1}/{num_episodes} | "
                     f"Reward: {avg_reward:.1f} | "
                     f"Length: {avg_length:.0f} | "
                     f"Kills: {interval_wins}/{log_interval}"
+                    f"{' [NEW BEST - saved]' if is_best else ''}"
                 )
                 interval_wins = 0
-
-            # Save checkpoint
-            if (episode + 1) % save_interval == 0:
-                save_path = checkpoint_path / f"checkpoint_{episode + 1}.pt"
-                agent.save(str(save_path))
-                print(f"Saved checkpoint: {save_path}")
 
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
@@ -203,10 +206,6 @@ def train(
     finally:
         env.close()
 
-    # Save final model
-    final_path = checkpoint_path / "final.pt"
-    agent.save(str(final_path))
-    print(f"Saved final model: {final_path}")
-
-    print(f"\nFinal: {total_wins}/{num_episodes} wins ({total_wins/num_episodes*100:.1f}%)")
+    print(f"\nTraining complete: {total_wins}/{num_episodes} wins ({total_wins/num_episodes*100:.1f}%)")
+    print(f"Best avg reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
     return agent, episode_rewards
