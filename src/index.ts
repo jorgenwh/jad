@@ -57,10 +57,10 @@ function startGameWithAgent() {
   // Hook into the world's tick event to run agent each tick
   const originalTick = world.tickWorld.bind(world);
   world.tickWorld = (ticks: number) => {
+    originalTick(ticks);  // Tick happens FIRST
     if (agentController) {
-      agentController.tick();
+      agentController.tick();  // Then observe (state AFTER tick, matching headless)
     }
-    originalTick(ticks);
   };
 
   // Use the normal game loop (handles rendering + ticking properly)

@@ -37,7 +37,6 @@ export class AgentController {
   private player: Player;
   private jad: Jad;
   private connected = false;
-  private pendingAction: number | null = null;
 
   // Track Jad's attack for observation
   private currentJadAttack = 0;
@@ -65,7 +64,9 @@ export class AgentController {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'action') {
-            this.pendingAction = data.action;
+            // Execute action IMMEDIATELY when received (between ticks)
+            // This ensures the action is applied before the next tick
+            this.executeAction(data.action);
             console.log(`Agent action: ${data.action_name}`);
           }
         } catch (e) {
@@ -98,7 +99,9 @@ export class AgentController {
   }
 
   /**
-   * Called each tick to update the agent and execute actions.
+   * Called each tick AFTER the world has ticked.
+   * Observes the new state and sends it to the agent.
+   * Actions are executed immediately in onmessage, not here.
    */
   tick(): void {
     if (!this.connected || !this.ws) return;
@@ -116,16 +119,10 @@ export class AgentController {
       return;
     }
 
-    // Execute pending action (from previous tick's response)
-    if (this.pendingAction !== null) {
-      this.executeAction(this.pendingAction);
-      this.pendingAction = null;
-    }
-
-    // Update Jad attack tracking
+    // Update Jad attack tracking (after tick, same as headless)
     this.updateJadAttackTracking();
 
-    // Send current observation
+    // Send current observation (state AFTER tick, matching headless)
     const obs = this.getObservation();
     this.ws.send(JSON.stringify({ type: 'observation', observation: obs }));
   }
