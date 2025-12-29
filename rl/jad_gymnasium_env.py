@@ -6,9 +6,11 @@ Used with Stable-Baselines3 for parallelized training.
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from stable_baselines3.common.monitor import Monitor
 
 from env import JadEnv, Observation
-from observations import obs_to_array, OBS_DIM
+from observations import obs_to_array, OBS_DIM, NORMALIZE_MASK
+from normalizer import RunningNormalizer
 
 
 MAX_EPISODE_LENGTH = 300  # Hard cap to prevent stalling
@@ -42,6 +44,26 @@ class JadGymnasiumEnv(gym.Env):
         self.current_obs: Observation | None = None
         self.episode_length = 0
 
+        # Observation normalizer (only for continuous features, like train.py)
+        n_continuous = int(np.sum(NORMALIZE_MASK))
+        self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
+        self.normalize_mask = NORMALIZE_MASK
+
+    def normalize_obs(self, obs: np.ndarray, update: bool = True) -> np.ndarray:
+        """
+        Normalize only continuous features, leaving one-hot features unchanged.
+        Matches train.py's normalization approach.
+        """
+        result = obs.copy()
+        continuous = obs[self.normalize_mask]
+
+        if update:
+            self.obs_normalizer.update(continuous)
+
+        normalized_continuous = self.obs_normalizer.normalize(continuous)
+        result[self.normalize_mask] = normalized_continuous
+        return result
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -50,6 +72,7 @@ class JadGymnasiumEnv(gym.Env):
         self.episode_length = 0
 
         obs_array = obs_to_array(self.current_obs)
+        obs_array = self.normalize_obs(obs_array)
         return obs_array, {}
 
     def step(self, action):
@@ -75,9 +98,21 @@ class JadGymnasiumEnv(gym.Env):
             truncated = True
             reward -= 100.0  # Timeout penalty
 
-        obs_array = obs_to_array(self.current_obs)
+        # Scale reward to stabilize training (matches train.py)
+        reward = reward / 100.0
 
-        return obs_array, reward, result.terminated, truncated, {}
+        obs_array = obs_to_array(self.current_obs)
+        obs_array = self.normalize_obs(obs_array)
+
+        # Build info dict with outcome for tracking
+        info = {}
+        if result.terminated or truncated:
+            if self.current_obs.jad_hp <= 0:
+                info["outcome"] = "kill"
+            else:
+                info["outcome"] = "death"
+
+        return obs_array, reward, result.terminated, truncated, info
 
     def _compute_reward(
         self,
@@ -131,7 +166,9 @@ class JadGymnasiumEnv(gym.Env):
 
 
 def make_jad_env():
-    """Factory function for creating JadGymnasiumEnv instances."""
+    """Factory function for creating JadGymnasiumEnv instances wrapped with Monitor."""
     def _init():
-        return JadGymnasiumEnv()
+        env = JadGymnasiumEnv()
+        # Monitor wrapper adds episode stats (r, l, t) to info dict
+        return Monitor(env)
     return _init

@@ -1,7 +1,15 @@
 """
-Training script for Jad RL agent.
+Training script for Jad RL agent (custom implementation).
+
+Usage:
+    python train.py                        # Train with default settings
+    python train.py --episodes 50000       # Train for 50k episodes
+    python train.py --episodes 0           # Train forever (Ctrl+C to stop)
+    python train.py --update-interval 4096 # Larger rollouts before update
 """
 
+import argparse
+import time
 import numpy as np
 import torch
 from pathlib import Path
@@ -91,9 +99,19 @@ def train(
     total_wins = 0
     interval_wins = 0
     best_avg_reward = float('-inf')  # Track best model
+    total_steps = 0
+    start_time = time.time()
+
+    # Handle unlimited episodes
+    unlimited = num_episodes == 0
+    if unlimited:
+        num_episodes = 10**9  # Effectively unlimited
 
     print(f"Training on device: {agent.device}")
-    print(f"Starting training for {num_episodes} episodes...")
+    if unlimited:
+        print("Starting training (unlimited, Ctrl+C to stop)...")
+    else:
+        print(f"Starting training for {num_episodes} episodes...")
 
     # Initialize hidden state once at start
     agent.reset_hidden()
@@ -133,6 +151,7 @@ def train(
                     obs_array, action, log_prob, value, scaled_reward, result.terminated
                 )
                 episode_length += 1
+                total_steps += 1
 
                 # Update if enough steps collected
                 if len(agent.buffer) >= update_interval:
@@ -191,12 +210,17 @@ def train(
                     save_path = checkpoint_path / "best.pt"
                     agent.save(str(save_path))
 
+                elapsed = int(time.time() - start_time)
+                elapsed_str = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
+                start_ep = episode + 2 - log_interval
                 print(
-                    f"Episode {episode + 1}/{num_episodes} | "
-                    f"Reward: {avg_reward:.1f} | "
-                    f"Length: {avg_length:.0f} | "
-                    f"Kills: {interval_wins}/{log_interval}"
-                    f"{' [NEW BEST - saved]' if is_best else ''}"
+                    f"Episodes {start_ep}-{episode + 1} | "
+                    f"Avg Reward: {avg_reward:.1f} | "
+                    f"Avg Length: {avg_length:.0f} | "
+                    f"Kills: {interval_wins}/{log_interval} | "
+                    f"Steps: {total_steps:,} | "
+                    f"Time: {elapsed_str}"
+                    f"{' [NEW BEST]' if is_best else ''}"
                 )
                 interval_wins = 0
 
@@ -206,6 +230,48 @@ def train(
     finally:
         env.close()
 
-    print(f"\nTraining complete: {total_wins}/{num_episodes} wins ({total_wins/num_episodes*100:.1f}%)")
+    actual_episodes = len(episode_rewards)
+    win_rate = (total_wins / actual_episodes * 100) if actual_episodes > 0 else 0
+    print(f"\nTraining complete: {total_wins}/{actual_episodes} wins ({win_rate:.1f}%)")
     print(f"Best avg reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
     return agent, episode_rewards
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Train Jad agent (custom implementation)")
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=100000,
+        help="Number of episodes to train (default: 100000, 0 = unlimited)",
+    )
+    parser.add_argument(
+        "--update-interval",
+        type=int,
+        default=2048,
+        help="Steps between PPO updates (default: 2048)",
+    )
+    parser.add_argument(
+        "--log-interval",
+        type=int,
+        default=100,
+        help="Episodes between logging (default: 100)",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=str,
+        default="checkpoints",
+        help="Directory for saving checkpoints",
+    )
+    args = parser.parse_args()
+
+    train(
+        num_episodes=args.episodes,
+        update_interval=args.update_interval,
+        log_interval=args.log_interval,
+        checkpoint_dir=args.checkpoint_dir,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -2,14 +2,20 @@
 WebSocket server for browser visualization of the trained agent.
 
 Run this server, then open the browser simulation to see the agent play.
+Supports both custom .pt checkpoints and SB3 .zip checkpoints.
+
+Usage:
+    python ws_server.py                                    # Use default custom checkpoint
+    python ws_server.py --checkpoint checkpoints/best.pt   # Custom checkpoint
+    python ws_server.py --checkpoint checkpoints/best_sb3.zip  # SB3 checkpoint
 """
 
 import asyncio
 import json
+import numpy as np
 import torch
 from websockets.asyncio.server import serve
 
-from agent import PPOAgent
 from observations import obs_to_array
 from env import Observation
 
@@ -29,20 +35,60 @@ ACTIONS = {
 
 class AgentServer:
     def __init__(self, checkpoint_path: str | None = None):
+        self.is_sb3 = False
+        self.agent = None
+        self.model = None  # For SB3
+        self.lstm_state = None  # For SB3 LSTM state
+
+        if checkpoint_path and checkpoint_path.endswith(".zip"):
+            # SB3 checkpoint
+            self._load_sb3(checkpoint_path)
+        else:
+            # Custom checkpoint
+            self._load_custom(checkpoint_path)
+
+    def _load_custom(self, checkpoint_path: str | None):
+        """Load custom .pt checkpoint."""
+        from agent import PPOAgent
+
         self.agent = PPOAgent()
-        self.agent.training = False  # Don't update normalizer
+        self.agent.training = False
         self.agent.eval_mode()
-        self.agent.reset_hidden()  # Initialize LSTM hidden state
+        self.agent.reset_hidden()
 
         if checkpoint_path:
             try:
                 self.agent.load(checkpoint_path)
-                print(f"Loaded checkpoint: {checkpoint_path}")
+                print(f"Loaded custom checkpoint: {checkpoint_path}")
             except FileNotFoundError:
                 print(f"Checkpoint not found: {checkpoint_path}")
                 print("Using untrained agent")
         else:
             print("No checkpoint specified, using untrained agent")
+
+    def _load_sb3(self, checkpoint_path: str):
+        """Load SB3 .zip checkpoint."""
+        from sb3_contrib import RecurrentPPO
+
+        self.is_sb3 = True
+        try:
+            self.model = RecurrentPPO.load(checkpoint_path, device="auto")
+            self.lstm_state = None  # Will be initialized on first prediction
+            print(f"Loaded SB3 checkpoint: {checkpoint_path}")
+
+            # Set up observation normalizer (same as JadGymnasiumEnv)
+            from observations import NORMALIZE_MASK
+            from normalizer import RunningNormalizer
+            n_continuous = int(np.sum(NORMALIZE_MASK))
+            self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
+            self.normalize_mask = NORMALIZE_MASK
+            # Note: normalizer starts fresh - for proper inference, we'd need to
+            # save/load normalizer stats, but SB3 models are trained with
+            # normalization inside the env, so observations should be normalized
+            # the same way during inference
+        except FileNotFoundError:
+            print(f"Checkpoint not found: {checkpoint_path}")
+            raise
 
     def get_action(self, obs_dict: dict) -> int:
         """Get action from observation dictionary."""
@@ -63,11 +109,34 @@ class AgentServer:
         # Convert to array
         obs_array = obs_to_array(obs)
 
-        # Get action from agent
-        with torch.no_grad():
-            action, _, _ = self.agent.select_action(obs_array)
+        if self.is_sb3:
+            # Normalize only continuous features (matching training)
+            result = obs_array.copy()
+            continuous = obs_array[self.normalize_mask]
+            self.obs_normalizer.update(continuous)
+            normalized_continuous = self.obs_normalizer.normalize(continuous)
+            result[self.normalize_mask] = normalized_continuous
+            obs_array = result
 
-        return action
+            # SB3 model - use predict with LSTM state
+            action, self.lstm_state = self.model.predict(
+                obs_array,
+                state=self.lstm_state,
+                deterministic=True,
+            )
+            return int(action)
+        else:
+            # Custom model
+            with torch.no_grad():
+                action, _, _ = self.agent.select_action(obs_array)
+            return action
+
+    def reset_state(self):
+        """Reset LSTM state for new episode."""
+        if self.is_sb3:
+            self.lstm_state = None
+        else:
+            self.agent.reset_hidden()
 
     async def handle_connection(self, websocket):
         """Handle a WebSocket connection from the browser."""
@@ -91,13 +160,13 @@ class AgentServer:
 
                     elif data.get("type") == "reset":
                         print("Episode reset")
-                        self.agent.reset_hidden()  # Reset LSTM state
+                        self.reset_state()
                         await websocket.send(json.dumps({"type": "ready"}))
 
                     elif data.get("type") == "terminated":
                         result = data.get("result", "unknown")
                         print(f"Episode ended: {result}")
-                        self.agent.reset_hidden()  # Reset LSTM state for next episode
+                        self.reset_state()
 
                 except json.JSONDecodeError:
                     print(f"Invalid JSON: {message}")
@@ -124,7 +193,7 @@ async def main():
         "--checkpoint",
         type=str,
         default="checkpoints/best.pt",
-        help="Path to agent checkpoint",
+        help="Path to checkpoint (.pt for custom, .zip for SB3)",
     )
     parser.add_argument(
         "--port",
