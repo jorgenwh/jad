@@ -168,3 +168,19 @@ class SimplePPOAgent:
 
     def buffer_size(self):
         return len(self.obs_buf)
+
+    def save(self, path: str) -> None:
+        """Save model checkpoint."""
+        torch.save({
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "normalizer_state_dict": self.obs_normalizer.state_dict(),
+        }, path)
+
+    def load(self, path: str) -> None:
+        """Load model checkpoint."""
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if "normalizer_state_dict" in checkpoint:
+            self.obs_normalizer.load_state_dict(checkpoint["normalizer_state_dict"])

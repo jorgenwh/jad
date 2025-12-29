@@ -193,10 +193,10 @@ def train(
                 interval_wins = 0
 
             # Save checkpoint
-            # if (episode + 1) % save_interval == 0:
-            #     save_path = checkpoint_path / f"checkpoint_{episode + 1}.pt"
-            #     agent.save(str(save_path))
-            #     print(f"Saved checkpoint: {save_path}")
+            if (episode + 1) % save_interval == 0:
+                save_path = checkpoint_path / f"checkpoint_{episode + 1}.pt"
+                agent.save(str(save_path))
+                print(f"Saved checkpoint: {save_path}")
 
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
@@ -205,9 +205,9 @@ def train(
         env.close()
 
     # Save final model
-    # final_path = checkpoint_path / "final.pt"
-    # agent.save(str(final_path))
-    # print(f"Saved final model: {final_path}")
+    final_path = checkpoint_path / "final.pt"
+    agent.save(str(final_path))
+    print(f"Saved final model: {final_path}")
 
     print(f"\nFinal: {total_wins}/{num_episodes} wins ({total_wins/num_episodes*100:.1f}%)")
     return agent, episode_rewards

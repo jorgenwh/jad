@@ -79,6 +79,14 @@ def train(
 
     env.close()
     print(f"\nFinal: {total_wins}/{num_episodes} wins ({total_wins/num_episodes*100:.1f}%)")
+
+    # Save final checkpoint
+    from pathlib import Path
+    checkpoint_dir = Path("checkpoints")
+    checkpoint_dir.mkdir(exist_ok=True)
+    agent.save(str(checkpoint_dir / "simple_final.pt"))
+    print(f"Saved checkpoint to {checkpoint_dir / 'simple_final.pt'}")
+
     return agent
 
 
