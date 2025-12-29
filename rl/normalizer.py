@@ -4,7 +4,6 @@ Uses Welford's online algorithm for numerical stability.
 """
 
 import numpy as np
-import torch
 
 
 class RunningNormalizer:

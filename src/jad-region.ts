@@ -1,7 +1,7 @@
 import { Region, Player } from 'osrs-sdk';
 import { InvisibleMovementBlocker } from 'osrs-sdk';
 
-import { getLoadout } from './loadout';
+import { getRangedLoadout, getMeleeLoadout } from './loadout';
 import { Jad } from './jad';
 
 export class JadRegion extends Region {
@@ -30,7 +30,7 @@ export class JadRegion extends Region {
     const player = new Player(this, { x: 10, y: 5 });
     this.addPlayer(player);
 
-    player.setUnitOptions(getLoadout());
+    player.setUnitOptions(getMeleeLoadout());
 
     this.addBoundaryBlockers();
 

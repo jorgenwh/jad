@@ -28,7 +28,7 @@ class JadRegion extends osrs_sdk_1.Region {
     initialiseRegion() {
         const player = new osrs_sdk_1.Player(this, { x: 10, y: 5 });
         this.addPlayer(player);
-        player.setUnitOptions((0, loadout_1.getLoadout)());
+        player.setUnitOptions((0, loadout_1.getMeleeLoadout)());
         this.addBoundaryBlockers();
         this._jad = new jad_1.Jad(this, { x: 8, y: 15 }, { aggro: player });
         this.addMob(this._jad);

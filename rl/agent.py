@@ -67,7 +67,7 @@ class PPOAgent:
     def __init__(
         self,
         obs_dim: int = OBS_DIM,
-        action_dim: int = 5,
+        action_dim: int = 9,
         hidden_dim: int = 64,
         lr: float = 3e-4,
         gamma: float = 0.99,

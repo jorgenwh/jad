@@ -13,9 +13,19 @@ import {
   TwistedBow,
   UnitEquipment,
   ZaryteVambraces,
+  TorvaFullhelm,
+  TorvaPlatebody,
+  TorvaPlatelegs,
+  InfernalCape,
+  PrimordialBoots,
+  FerociousGloves,
+  BladeOfSaeldor,
+  AvernicDefender,
+  AmuletOfTorture,
+  SuperCombatPotion,
 } from "osrs-sdk";
 
-export const getLoadout = () => {
+export const getRangedLoadout = () => {
   const equipment = new UnitEquipment();
   equipment.weapon = new TwistedBow();
   equipment.helmet = new MasoriMaskF();
@@ -32,6 +42,29 @@ export const getLoadout = () => {
     equipment,
     inventory: [
       new BastionPotion(),
+      new SuperRestore(),
+      new SaradominBrew(),
+    ],
+  };
+};
+
+export const getMeleeLoadout = () => {
+  const equipment = new UnitEquipment();
+  equipment.weapon = new BladeOfSaeldor();
+  equipment.offhand = new AvernicDefender();
+  // equipment.helmet = new TorvaFullhelm();
+  equipment.necklace = new AmuletOfTorture();
+  equipment.cape = new InfernalCape();
+  // equipment.chest = new TorvaPlatebody();
+  // equipment.legs = new TorvaPlatelegs();
+  equipment.feet = new PrimordialBoots();
+  equipment.gloves = new FerociousGloves();
+  equipment.ring = new RingOfSufferingImbued();
+
+  return {
+    equipment,
+    inventory: [
+      new SuperCombatPotion(),
       new SuperRestore(),
       new SaradominBrew(),
     ],

@@ -21,6 +21,10 @@ ACTIONS = {
     2: "PRAY_RANGE",
     3: "DRINK_RESTORE",
     4: "ATTACK",
+    5: "PRAY_MELEE",
+    6: "DRINK_SUPER_COMBAT",
+    7: "TOGGLE_PIETY",
+    8: "DRINK_SARA_BREW",
 }
 
 
@@ -31,10 +35,13 @@ def print_obs(obs: Observation, tick: int | None = None):
         print(f"Tick: {tick}")
     print(f"Player HP:    {obs.player_hp}")
     print(f"Prayer:       {obs.player_prayer}")
-    print(f"Active Prayer: {['None', 'Protect Mage', 'Protect Range'][obs.active_prayer]}")
+    print(f"Active Prayer: {['None', 'Protect Mage', 'Protect Range', 'Protect Melee'][obs.active_prayer]}")
+    print(f"Piety:        {'ON' if obs.piety_active else 'OFF'}")
     print(f"Jad HP:       {obs.jad_hp}")
-    print(f"Jad Attack:   {['None', 'MAGIC', 'RANGE'][obs.jad_attack]}")
+    print(f"Jad Attack:   {['None', 'MAGIC', 'RANGE', 'MELEE'][obs.jad_attack]}")
     print(f"Restores:     {obs.restore_doses}")
+    print(f"Super Combat: {obs.super_combat_doses}")
+    print(f"Sara Brews:   {obs.sara_brew_doses}")
     print("=" * 50)
 
 

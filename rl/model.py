@@ -18,7 +18,7 @@ class ActorCritic(nn.Module):
     def __init__(
         self,
         obs_dim: int = 6,
-        action_dim: int = 5,
+        action_dim: int = 9,
         hidden_dim: int = 64,
     ):
         super().__init__()

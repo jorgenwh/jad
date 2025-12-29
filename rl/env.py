@@ -13,10 +13,13 @@ from dataclasses import dataclass
 class Observation:
     player_hp: int
     player_prayer: int
-    active_prayer: int  # 0=none, 1=mage, 2=range
+    active_prayer: int  # 0=none, 1=mage, 2=range, 3=melee
     jad_hp: int
-    jad_attack: int  # 0=none, 1=mage, 2=range
+    jad_attack: int  # 0=none, 1=mage, 2=range, 3=melee
     restore_doses: int
+    super_combat_doses: int
+    sara_brew_doses: int
+    piety_active: bool
     player_aggro: bool  # Whether player is attacking Jad
 
 
@@ -31,10 +34,14 @@ class JadEnv:
 
     # Action constants
     WAIT = 0
-    PRAY_MAGE = 1
-    PRAY_RANGE = 2
+    PRAY_MAGE = 1         # Toggle protect from magic
+    PRAY_RANGE = 2        # Toggle protect from range
     DRINK_RESTORE = 3
     ATTACK = 4
+    PRAY_MELEE = 5        # Toggle protect from melee
+    DRINK_SUPER_COMBAT = 6
+    TOGGLE_PIETY = 7
+    DRINK_SARA_BREW = 8
 
     def __init__(self):
         self._proc: subprocess.Popen | None = None
@@ -77,6 +84,9 @@ class JadEnv:
             jad_hp=obs["jad_hp"],
             jad_attack=obs["jad_attack"],
             restore_doses=obs["restore_doses"],
+            super_combat_doses=obs.get("super_combat_doses", 0),
+            sara_brew_doses=obs.get("sara_brew_doses", 0),
+            piety_active=obs.get("piety_active", False),
             player_aggro=obs.get("player_aggro", False),
         )
 

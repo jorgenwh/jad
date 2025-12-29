@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLoadout = void 0;
+exports.getMeleeLoadout = exports.getRangedLoadout = void 0;
 const osrs_sdk_1 = require("osrs-sdk");
-const getLoadout = () => {
+const getRangedLoadout = () => {
     const equipment = new osrs_sdk_1.UnitEquipment();
     equipment.weapon = new osrs_sdk_1.TwistedBow();
     equipment.helmet = new osrs_sdk_1.MasoriMaskF();
@@ -23,4 +23,26 @@ const getLoadout = () => {
         ],
     };
 };
-exports.getLoadout = getLoadout;
+exports.getRangedLoadout = getRangedLoadout;
+const getMeleeLoadout = () => {
+    const equipment = new osrs_sdk_1.UnitEquipment();
+    equipment.weapon = new osrs_sdk_1.BladeOfSaeldor();
+    equipment.offhand = new osrs_sdk_1.AvernicDefender();
+    // equipment.helmet = new TorvaFullhelm();
+    equipment.necklace = new osrs_sdk_1.AmuletOfTorture();
+    equipment.cape = new osrs_sdk_1.InfernalCape();
+    // equipment.chest = new TorvaPlatebody();
+    // equipment.legs = new TorvaPlatelegs();
+    equipment.feet = new osrs_sdk_1.PrimordialBoots();
+    equipment.gloves = new osrs_sdk_1.FerociousGloves();
+    equipment.ring = new osrs_sdk_1.RingOfSufferingImbued();
+    return {
+        equipment,
+        inventory: [
+            new osrs_sdk_1.SuperCombatPotion(),
+            new osrs_sdk_1.SuperRestore(),
+            new osrs_sdk_1.SaradominBrew(),
+        ],
+    };
+};
+exports.getMeleeLoadout = getMeleeLoadout;

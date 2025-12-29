@@ -9,7 +9,6 @@ from pathlib import Path
 from env import JadEnv, Observation
 from agent import PPOAgent
 from observations import obs_to_array
-from normalizer import RunningNormalizer
 
 
 MAX_EPISODE_LENGTH = 300  # Hard cap - must kill Jad within this many ticks

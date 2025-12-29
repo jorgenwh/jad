@@ -15,11 +15,15 @@ var JadAction;
     JadAction[JadAction["PRAY_RANGE"] = 2] = "PRAY_RANGE";
     JadAction[JadAction["DRINK_RESTORE"] = 3] = "DRINK_RESTORE";
     JadAction[JadAction["ATTACK"] = 4] = "ATTACK";
+    JadAction[JadAction["PRAY_MELEE"] = 5] = "PRAY_MELEE";
+    JadAction[JadAction["DRINK_SUPER_COMBAT"] = 6] = "DRINK_SUPER_COMBAT";
+    JadAction[JadAction["TOGGLE_PIETY"] = 7] = "TOGGLE_PIETY";
+    JadAction[JadAction["DRINK_SARA_BREW"] = 8] = "DRINK_SARA_BREW";
 })(JadAction || (exports.JadAction = JadAction = {}));
 class HeadlessEnv {
     constructor(createRegion) {
         // Track Jad's attack for observation
-        this.currentJadAttack = 0; // 0=none, 1=mage, 2=range
+        this.currentJadAttack = 0; // 0=none, 1=mage, 2=range, 3=melee
         this.attackTicksRemaining = 0;
         this.prevJadAttackDelay = 0; // To detect when Jad actually attacks
         this.createRegion = createRegion;
@@ -75,43 +79,57 @@ class HeadlessEnv {
                 // Do nothing
                 break;
             case JadAction.PRAY_MAGE:
-                this.setPrayer('magic');
+                this.togglePrayer('Protect from Magic');
                 break;
             case JadAction.PRAY_RANGE:
-                this.setPrayer('range');
+                this.togglePrayer('Protect from Range');
                 break;
             case JadAction.DRINK_RESTORE:
-                this.drinkRestore();
+                this.drinkPotion('restore');
                 break;
             case JadAction.ATTACK:
                 this.attackJad();
                 break;
+            case JadAction.PRAY_MELEE:
+                this.togglePrayer('Protect from Melee');
+                break;
+            case JadAction.DRINK_SUPER_COMBAT:
+                this.drinkPotion('super combat');
+                break;
+            case JadAction.TOGGLE_PIETY:
+                this.togglePrayer('Piety');
+                break;
+            case JadAction.DRINK_SARA_BREW:
+                this.drinkPotion('saradomin brew');
+                break;
         }
     }
-    setPrayer(style) {
+    togglePrayer(prayerName) {
         const prayerController = this.player.prayerController;
         if (!prayerController)
             return;
-        // Map style to prayer name
-        const prayerName = style === 'magic' ? 'Protect from Magic' : 'Protect from Range';
-        // Find the prayer by name (in all prayers, not just active ones)
+        // Find the prayer by name
         const targetPrayer = prayerController.findPrayerByName(prayerName);
-        if (targetPrayer && !targetPrayer.isActive) {
-            // Activate the prayer - this auto-deactivates conflicting overhead prayers
-            targetPrayer.activate(this.player);
+        if (targetPrayer) {
+            if (targetPrayer.isActive) {
+                // Deactivate if already active
+                targetPrayer.deactivate();
+            }
+            else {
+                // Activate if not active - this auto-deactivates conflicting overhead prayers
+                targetPrayer.activate(this.player);
+            }
         }
     }
-    // TODO: find a better way to identify restore potions
-    drinkRestore() {
-        // Find a super restore in inventory and drink it
+    drinkPotion(potionType) {
+        // Find a potion in inventory and drink it
         if (!this.player || !this.player.inventory)
             return;
         const inventory = this.player.inventory;
         for (const item of inventory) {
             if (item && item instanceof osrs_sdk_1.Potion && item.doses > 0) {
-                // Check if it's a restore-type potion by checking itemName
                 const itemName = item.itemName?.toString().toLowerCase() || '';
-                if (itemName.includes('restore')) {
+                if (itemName.includes(potionType)) {
                     item.drink(this.player);
                     break;
                 }
@@ -130,8 +148,21 @@ class HeadlessEnv {
         if (this.prevJadAttackDelay <= 1 && currentDelay > 1) {
             // Jad just attacked - capture the attack style NOW
             const style = this.jad.attackStyle;
-            this.currentJadAttack = style === 'magic' ? 1 : 2;
-            this.attackTicksRemaining = 4; // Visible for 4 ticks (attack + 3 projectile flight)
+            if (style === 'magic') {
+                this.currentJadAttack = 1;
+                this.attackTicksRemaining = 4; // Visible for 4 ticks (attack + 3 projectile flight)
+            }
+            else if (style === 'range') {
+                this.currentJadAttack = 2;
+                this.attackTicksRemaining = 4; // Visible for 4 ticks (attack + 3 projectile flight)
+            }
+            else {
+                // Melee attack - style is 'stab' (from canMeleeIfClose)
+                // Melee is instant, no projectile delay
+                // Use 2 so after immediate decrement it's 1 (visible for 1 tick)
+                this.currentJadAttack = 3;
+                this.attackTicksRemaining = 2;
+            }
         }
         // Decrement visibility timer
         if (this.attackTicksRemaining > 0) {
@@ -143,22 +174,31 @@ class HeadlessEnv {
         this.prevJadAttackDelay = currentDelay;
     }
     getObservation() {
-        // Get active prayer (0=none, 1=mage, 2=range)
+        // Get active prayer (0=none, 1=mage, 2=range, 3=melee)
         let activePrayer = 0;
+        let pietyActive = false;
         const prayerController = this.player.prayerController;
         if (prayerController) {
             // Check which overhead protection prayer is active by name
             const magicPrayer = prayerController.findPrayerByName('Protect from Magic');
             const rangePrayer = prayerController.findPrayerByName('Protect from Range');
+            const meleePrayer = prayerController.findPrayerByName('Protect from Melee');
+            const pietyPrayer = prayerController.findPrayerByName('Piety');
             if (magicPrayer?.isActive) {
                 activePrayer = 1;
             }
             else if (rangePrayer?.isActive) {
                 activePrayer = 2;
             }
+            else if (meleePrayer?.isActive) {
+                activePrayer = 3;
+            }
+            pietyActive = pietyPrayer?.isActive ?? false;
         }
-        // Count restore doses
+        // Count potion doses
         let restoreDoses = 0;
+        let superCombatDoses = 0;
+        let saraBrewDoses = 0;
         if (this.player && this.player.inventory) {
             const inventory = this.player.inventory;
             for (const item of inventory) {
@@ -166,6 +206,12 @@ class HeadlessEnv {
                     const itemName = item.itemName?.toString().toLowerCase() || '';
                     if (itemName.includes('restore')) {
                         restoreDoses += item.doses;
+                    }
+                    else if (itemName.includes('super combat')) {
+                        superCombatDoses += item.doses;
+                    }
+                    else if (itemName.includes('saradomin brew')) {
+                        saraBrewDoses += item.doses;
                     }
                 }
             }
@@ -177,6 +223,9 @@ class HeadlessEnv {
             jad_hp: this.jad?.currentStats?.hitpoint ?? 0,
             jad_attack: this.currentJadAttack,
             restore_doses: restoreDoses,
+            super_combat_doses: superCombatDoses,
+            sara_brew_doses: saraBrewDoses,
+            piety_active: pietyActive,
         };
     }
 }

@@ -7,7 +7,6 @@ Run this server, then open the browser simulation to see the agent play.
 import asyncio
 import json
 import torch
-import numpy as np
 from websockets.asyncio.server import serve
 
 from agent import PPOAgent
@@ -21,6 +20,10 @@ ACTIONS = {
     2: "PRAY_RANGE",
     3: "DRINK_RESTORE",
     4: "ATTACK",
+    5: "PRAY_MELEE",
+    6: "DRINK_SUPER_COMBAT",
+    7: "TOGGLE_PIETY",
+    8: "DRINK_SARA_BREW",
 }
 
 
@@ -51,6 +54,9 @@ class AgentServer:
             jad_hp=obs_dict.get("jad_hp", 255),
             jad_attack=obs_dict.get("jad_attack", 0),
             restore_doses=obs_dict.get("restore_doses", 0),
+            super_combat_doses=obs_dict.get("super_combat_doses", 0),
+            sara_brew_doses=obs_dict.get("sara_brew_doses", 0),
+            piety_active=obs_dict.get("piety_active", False),
             player_aggro=obs_dict.get("player_aggro", False),
         )
 
