@@ -157,3 +157,71 @@ def reward_sparse(
             return -1
         case _:
             return 0
+
+
+def jad_kill_reward(obs: Observation, prev_obs: Observation, kill_reward: float = 100.0) -> float:
+    """
+    Compute reward for killing individual Jads.
+    Detects when a Jad's HP transitions from >0 to <=0.
+    """
+    reward = 0.0
+    for jad, prev_jad in zip(obs.jads, prev_obs.jads):
+        if prev_jad.hp > 0 and jad.hp <= 0:
+            reward += kill_reward
+    return reward
+
+
+@reward_function("multijad")
+def reward_multijad(
+    obs: Observation,
+    prev_obs: Observation | None,
+    termination: TerminationState,
+    episode_length: int,
+) -> float:
+    reward = 0.0
+
+    if prev_obs is None:
+        return reward
+
+    # Prayer switching - only on landing tick
+    reward += prayer_landing_reward(obs, prev_obs, correct=2.5, wrong=-7.5)
+
+    # Penalty for not being in combat
+    if obs.player_aggro == 0:
+        reward -= 0.5
+
+    # Penalty for rigour not active
+    if not obs.rigour_active:
+        reward -= 0.2
+
+    # Penalty for low ranged stat (encourages bastion)
+    reward -= (1 - (obs.player_ranged / 112.0))
+
+    # Damage taken penalty
+    damage_taken = prev_obs.player_hp - obs.player_hp
+    if damage_taken > 0:
+        reward -= damage_taken * 0.1
+
+    # Jad healing penalty
+    for jad, prev_jad in zip(obs.jads, prev_obs.jads):
+        jad_healed = jad.hp - prev_jad.hp
+        if jad_healed > 0:
+            reward -= jad_healed * 0.3
+
+    # Healer tagging reward
+    reward += healer_tag_reward(obs, prev_obs)
+
+    # Per-Jad kill reward (incremental, not just at end)
+    reward += jad_kill_reward(obs, prev_obs)
+
+    # Terminal rewards
+    match termination:
+        case TerminationState.JAD_KILLED:
+            # All Jads dead
+            reward -= episode_length * 0.1
+        case TerminationState.PLAYER_DIED:
+            reward -= 200.0
+        case TerminationState.TRUNCATED:
+            reward -= 150.0
+
+    return reward
