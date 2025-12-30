@@ -296,6 +296,12 @@ def main():
         help="LSTM hidden layer size (default: 64)",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+        help="Minibatch size for PPO updates (default: 64)",
+    )
+    parser.add_argument(
         "--checkpoint-dir",
         type=str,
         default="checkpoints",
@@ -313,6 +319,7 @@ def main():
         num_envs=args.num_envs,
         total_timesteps=args.timesteps,
         n_steps=args.n_steps,
+        batch_size=args.batch_size,
         lstm_hidden_size=args.lstm_hidden_size,
         checkpoint_dir=args.checkpoint_dir,
         resume_path=args.resume,

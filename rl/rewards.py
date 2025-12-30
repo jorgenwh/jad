@@ -26,12 +26,22 @@ def compute_reward(
     """
     reward = 0.0
 
+    # Prayer switching feedback
+    if prev_obs is not None and prev_obs.jad_attack != 0:
+        if obs.active_prayer == prev_obs.jad_attack:
+            reward += 1
+        else:
+            reward -= 1
+
+    # Survival reward
+    reward += 0.1
+
     # Per-step rewards (only if we have previous observation to compare)
     if prev_obs is not None:
         # Damage taken penalty
         damage_taken = prev_obs.player_hp - obs.player_hp
         if damage_taken > 0:
-            reward -= damage_taken * 1
+            reward -= damage_taken * 0.1
 
         # Damage dealt reward
         damage_dealt = prev_obs.jad_hp - obs.jad_hp
@@ -42,7 +52,7 @@ def compute_reward(
     match termination:
         case TerminationState.JAD_KILLED:
             reward += 100.0
-            reward -= episode_length * 1.5  # Faster kills are better
+            reward -= episode_length * 0.25  # Faster kills are better
         case TerminationState.PLAYER_DIED | TerminationState.TRUNCATED:
             reward -= 100.0  # Lose penalty
 

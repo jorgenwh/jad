@@ -50,7 +50,9 @@ export class AgentController {
   // Track previous state for reward calculation
   private prevPlayerHp = 0;
   private prevJadHp = 0;
+  private prevJadAttack = 0;
   private cumulativeReward = 0;
+  private episodeLength = 0;
   private episodeTerminated = false;
 
   constructor(player: Player, jad: Jad) {
@@ -116,8 +118,10 @@ export class AgentController {
     if (this.ws && this.connected) {
       // Reset reward tracking
       this.cumulativeReward = 0;
+      this.episodeLength = 0;
       this.prevPlayerHp = this.player.currentStats?.hitpoint ?? 99;
       this.prevJadHp = this.jad.currentStats?.hitpoint ?? 350;
+      this.prevJadAttack = 0;
       this.episodeTerminated = false;
       this.ws.send(JSON.stringify({ type: 'reset' }));
     }
@@ -159,12 +163,12 @@ export class AgentController {
       return;
     }
     if (jadDead) {
-      // Show final state with kill bonus (matches rewards.py: +100 - episode_length * 1.5)
-      // Note: We don't track episode_length here, so just showing base +100
+      // Show final state with kill bonus (matches rewards.py: +100 - episode_length * 0.25)
       this.episodeTerminated = true;
       const obs = this.getObservation();
       this.updateObservationDisplay(obs);
-      this.cumulativeReward += 100; // Base kill bonus (actual has time penalty)
+      const killReward = 100 - this.episodeLength * 0.25;
+      this.cumulativeReward += killReward;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
       const actionEl = document.getElementById('agent_action');
@@ -374,23 +378,35 @@ export class AgentController {
     // Calculate step reward (matching Python rewards.py)
     let reward = 0;
 
+    // Prayer switching feedback
+    if (this.prevJadAttack !== 0) {
+      if (obs.active_prayer === this.prevJadAttack) {
+        reward += 1;
+      } else {
+        reward -= 1;
+      }
+    }
+
+    // Survival reward
+    reward += 0.1;
+
     // Damage dealt reward (damage_dealt * 0.1)
     const jadDamage = this.prevJadHp - obs.jad_hp;
     if (jadDamage > 0) {
       reward += jadDamage * 0.1;
     }
 
-    // Damage taken penalty (damage_taken * 1)
+    // Damage taken penalty (damage_taken * 0.1)
     const playerDamage = this.prevPlayerHp - obs.player_hp;
     if (playerDamage > 0) {
-      reward -= playerDamage * 1;
+      reward -= playerDamage * 0.1;
     }
 
-    // No per-tick penalty in Python rewards.py
-
     this.cumulativeReward += reward;
+    this.episodeLength++;
     this.prevPlayerHp = obs.player_hp;
     this.prevJadHp = obs.jad_hp;
+    this.prevJadAttack = obs.jad_attack;
 
     const rewardEl = document.getElementById('agent_reward');
     if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
