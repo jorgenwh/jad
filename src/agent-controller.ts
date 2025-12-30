@@ -156,6 +156,8 @@ export class AgentController {
       this.cumulativeReward += -50;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
+      const stepsEl = document.getElementById('agent_steps');
+      if (stepsEl) stepsEl.innerText = String(this.episodeLength);
       const actionEl = document.getElementById('agent_action');
       if (actionEl) actionEl.innerText = 'DEAD';
 
@@ -171,6 +173,8 @@ export class AgentController {
       this.cumulativeReward += killReward;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
+      const stepsEl = document.getElementById('agent_steps');
+      if (stepsEl) stepsEl.innerText = String(this.episodeLength);
       const actionEl = document.getElementById('agent_action');
       if (actionEl) actionEl.innerText = 'WIN';
 
