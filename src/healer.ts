@@ -16,7 +16,15 @@ import {
   ImageLoader,
 } from 'osrs-sdk';
 
-import HurKotImage from './assets/images/Yt-HurKot.png';
+// Image import - only works in browser with webpack, returns empty string in headless
+let HurKotImage: string = '';
+try {
+  // This will work with webpack in browser
+  HurKotImage = require('./assets/images/Yt-HurKot.png').default || require('./assets/images/Yt-HurKot.png');
+} catch {
+  // Headless mode - no image needed
+  HurKotImage = '';
+}
 
 /**
  * Healing weapon used by YtHurKot to heal Jad.

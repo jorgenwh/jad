@@ -1,9 +1,16 @@
-import { Region, Player } from 'osrs-sdk';
+import { Region, Player, Unit, UnitTypes } from 'osrs-sdk';
 import { InvisibleMovementBlocker } from 'osrs-sdk';
 
 import { getRangedLoadout, getMeleeLoadout } from './loadout';
 import { Jad } from './jad';
 import { YtHurKot } from './healer';
+
+// Healer aggro state for observation
+export enum HealerAggro {
+  NOT_PRESENT = 0,
+  JAD = 1,
+  PLAYER = 2,
+}
 
 export class JadRegion extends Region {
   getName(): string {
@@ -20,6 +27,10 @@ export class JadRegion extends Region {
 
   private _jad: Jad | null = null;
 
+  // Fixed-size healer tracking array - indices are stable for the episode
+  private _healers: [YtHurKot | null, YtHurKot | null, YtHurKot | null] = [null, null, null];
+  private _healersSpawned = false;
+
   get jad(): Jad {
     if (!this._jad) {
       throw new Error('Jad not initialized');
@@ -28,10 +39,54 @@ export class JadRegion extends Region {
   }
 
   /**
-   * Get all alive healers in the region.
+   * Register a healer at a specific index (0, 1, or 2).
+   * Called by Jad when spawning healers to maintain stable indices.
+   */
+  registerHealer(index: number, healer: YtHurKot): void {
+    if (index >= 0 && index < 3) {
+      this._healers[index] = healer;
+      this._healersSpawned = true;
+    }
+  }
+
+  /**
+   * Get healer at specific index (0, 1, or 2).
+   * Returns null if not spawned or dead.
+   */
+  getHealer(index: number): YtHurKot | null {
+    if (index < 0 || index >= 3) return null;
+    const healer = this._healers[index];
+    // Return null if healer is dead/dying
+    if (healer && healer.isDying()) return null;
+    return healer;
+  }
+
+  /**
+   * Get healer aggro state for observation.
+   */
+  getHealerAggro(index: number): HealerAggro {
+    const healer = this._healers[index];
+    if (!healer || healer.isDying()) return HealerAggro.NOT_PRESENT;
+
+    const aggro = healer.aggro;
+    if (aggro && aggro.type === UnitTypes.PLAYER) {
+      return HealerAggro.PLAYER;
+    }
+    return HealerAggro.JAD;
+  }
+
+  /**
+   * Whether healers have spawned this episode.
+   */
+  get healersSpawned(): boolean {
+    return this._healersSpawned;
+  }
+
+  /**
+   * Get all alive healers in the region (for backwards compatibility).
    */
   get healers(): YtHurKot[] {
-    return this.mobs.filter((mob): mob is YtHurKot => mob instanceof YtHurKot && !mob.isDying());
+    return this._healers.filter((h): h is YtHurKot => h !== null && !h.isDying());
   }
 
   /**

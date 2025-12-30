@@ -1,44 +1,38 @@
 """
 Observation encoding for Jad RL environment.
+
+Observation structure (46 dimensions total):
+- 22 continuous features (normalized to [0,1])
+- 22 one-hot features
+- 2 binary features
 """
 
 import numpy as np
 from env import Observation
 
 # Observation dimensions
-# 3 continuous + 4 active_prayer + 4 jad_attack + 5 restore + 5 super_combat + 5 sara_brew + 1 piety + 1 aggro + 4 healer_count = 32
-OBS_DIM = 32
+# 22 continuous + 5 player_aggro + 4 active_prayer + 4 jad_attack + 3*3 healer_aggro + 2 binary = 46
+OBS_DIM = 46
 
-# Indices for each feature in the observation array
-# Continuous features (will be normalized)
-IDX_PLAYER_HP = 0
-IDX_PLAYER_PRAYER = 1
-IDX_JAD_HP = 2
+# Normalization constants
+MAX_PLAYER_HP = 115      # Sara brew can boost above 99
+MAX_PRAYER = 99
+MAX_STAT = 118           # Super combat boosted
+MAX_COORD = 19           # 20x20 grid (0-19)
+MAX_JAD_HP = 350
+MAX_HEALER_HP = 90
 
-# One-hot features (should NOT be normalized)
-IDX_ACTIVE_PRAYER_START = 3   # 4 values: none, mage, range, melee
-IDX_JAD_ATTACK_START = 7      # 4 values: none, mage, range, melee
-IDX_RESTORE_DOSES_START = 11  # 5 values: 0, 1, 2, 3, 4
-IDX_SUPER_COMBAT_DOSES_START = 16  # 5 values: 0, 1, 2, 3, 4
-IDX_SARA_BREW_DOSES_START = 21  # 5 values: 0, 1, 2, 3, 4
-IDX_PIETY_ACTIVE = 26         # Binary: 0 or 1
-IDX_PLAYER_AGGRO = 27         # Binary: 0 or 1
-IDX_HEALER_COUNT_START = 28   # 4 values: 0, 1, 2, 3 healers
+# Indices for continuous features (will be normalized)
+# These are the first 22 values in the array
+CONTINUOUS_FEATURES = 22
 
 # Masks for normalization (True = normalize, False = don't normalize)
-NORMALIZE_MASK = np.array([
-    True,   # player_hp
-    True,   # player_prayer
-    True,   # jad_hp
-    False, False, False, False,  # active_prayer (one-hot, 4 values)
-    False, False, False, False,  # jad_attack (one-hot, 4 values)
-    False, False, False, False, False,  # restore_doses (one-hot, 5 values)
-    False, False, False, False, False,  # super_combat_doses (one-hot, 5 values)
-    False, False, False, False, False,  # sara_brew_doses (one-hot, 5 values)
-    False,  # piety_active (binary)
-    False,  # player_aggro (binary)
-    False, False, False, False,  # healer_count (one-hot, 4 values: 0, 1, 2, 3)
-], dtype=bool)
+# First 22 are continuous, rest are one-hot/binary
+NORMALIZE_MASK = np.array(
+    [True] * CONTINUOUS_FEATURES +  # All continuous features normalized
+    [False] * (OBS_DIM - CONTINUOUS_FEATURES),  # One-hot and binary not normalized
+    dtype=bool
+)
 
 
 def one_hot(index: int, size: int) -> np.ndarray:
@@ -49,36 +43,110 @@ def one_hot(index: int, size: int) -> np.ndarray:
     return arr
 
 
+def safe_divide(value: float, divisor: float) -> float:
+    """Safely divide, returning 0 if divisor is 0."""
+    if divisor <= 0:
+        return 0.0
+    return value / divisor
+
+
 def obs_to_array(obs: Observation) -> np.ndarray:
     """
-    Convert Observation dataclass to numpy array with one-hot encoding.
+    Convert Observation dataclass to numpy array with proper encoding.
 
     Returns:
-        Array of shape (32,):
-        - [0]: player_hp (continuous)
-        - [1]: player_prayer (continuous)
-        - [2]: jad_hp (continuous)
-        - [3:7]: active_prayer (one-hot: none, mage, range, melee)
-        - [7:11]: jad_attack (one-hot: none, mage, range, melee)
-        - [11:16]: restore_doses (one-hot: 0, 1, 2, 3, 4)
-        - [16:21]: super_combat_doses (one-hot: 0, 1, 2, 3, 4)
-        - [21:26]: sara_brew_doses (one-hot: 0, 1, 2, 3, 4)
-        - [26]: piety_active (binary: 0 or 1)
-        - [27]: player_aggro (binary: 0 or 1)
-        - [28:32]: healer_count (one-hot: 0, 1, 2, 3)
+        Array of shape (46,):
+
+        Continuous features (22, normalized to [0,1]):
+        - [0]: player_hp / 115
+        - [1]: player_prayer / 99
+        - [2]: player_attack / 118
+        - [3]: player_strength / 118
+        - [4]: player_defence / 118
+        - [5]: super_combat_doses / starting_doses
+        - [6]: sara_brew_doses / starting_doses
+        - [7]: super_restore_doses / starting_doses
+        - [8]: player_x / 19
+        - [9]: player_y / 19
+        - [10]: jad_hp / 350
+        - [11]: jad_x / 19
+        - [12]: jad_y / 19
+        - [13]: healer_1_hp / 90
+        - [14]: healer_1_x / 19
+        - [15]: healer_1_y / 19
+        - [16]: healer_2_hp / 90
+        - [17]: healer_2_x / 19
+        - [18]: healer_2_y / 19
+        - [19]: healer_3_hp / 90
+        - [20]: healer_3_x / 19
+        - [21]: healer_3_y / 19
+
+        One-hot features (22):
+        - [22:27]: player_aggro (5 values: none, jad, healer1, healer2, healer3)
+        - [27:31]: active_prayer (4 values: none, mage, range, melee)
+        - [31:35]: jad_attack (4 values: none, mage, range, melee)
+        - [35:38]: healer_1_aggro (3 values: not_present, jad, player)
+        - [38:41]: healer_2_aggro (3 values: not_present, jad, player)
+        - [41:44]: healer_3_aggro (3 values: not_present, jad, player)
+
+        Binary features (2):
+        - [44]: piety_active
+        - [45]: healers_spawned
     """
+    # Continuous features (normalized to [0,1])
+    continuous = np.array([
+        # Player state
+        obs.player_hp / MAX_PLAYER_HP,
+        obs.player_prayer / MAX_PRAYER,
+        obs.player_attack / MAX_STAT,
+        obs.player_strength / MAX_STAT,
+        obs.player_defence / MAX_STAT,
+        # Inventory (normalized by starting doses)
+        safe_divide(obs.super_combat_doses, obs.starting_super_combat_doses),
+        safe_divide(obs.sara_brew_doses, obs.starting_sara_brew_doses),
+        safe_divide(obs.super_restore_doses, obs.starting_super_restore_doses),
+        # Player position
+        obs.player_x / MAX_COORD,
+        obs.player_y / MAX_COORD,
+        # Jad state
+        obs.jad_hp / MAX_JAD_HP,
+        obs.jad_x / MAX_COORD,
+        obs.jad_y / MAX_COORD,
+        # Healer 1
+        obs.healer_1_hp / MAX_HEALER_HP,
+        obs.healer_1_x / MAX_COORD,
+        obs.healer_1_y / MAX_COORD,
+        # Healer 2
+        obs.healer_2_hp / MAX_HEALER_HP,
+        obs.healer_2_x / MAX_COORD,
+        obs.healer_2_y / MAX_COORD,
+        # Healer 3
+        obs.healer_3_hp / MAX_HEALER_HP,
+        obs.healer_3_x / MAX_COORD,
+        obs.healer_3_y / MAX_COORD,
+    ], dtype=np.float32)
+
+    # One-hot features
+    player_aggro_onehot = one_hot(obs.player_aggro, 5)  # none, jad, h1, h2, h3
+    active_prayer_onehot = one_hot(obs.active_prayer, 4)  # none, mage, range, melee
+    jad_attack_onehot = one_hot(obs.jad_attack, 4)  # none, mage, range, melee
+    healer_1_aggro_onehot = one_hot(obs.healer_1_aggro, 3)  # not_present, jad, player
+    healer_2_aggro_onehot = one_hot(obs.healer_2_aggro, 3)
+    healer_3_aggro_onehot = one_hot(obs.healer_3_aggro, 3)
+
+    # Binary features
+    binary = np.array([
+        float(obs.piety_active),
+        float(obs.healers_spawned),
+    ], dtype=np.float32)
+
     return np.concatenate([
-        # Continuous features
-        np.array([obs.player_hp, obs.player_prayer, obs.jad_hp], dtype=np.float32),
-        # One-hot features
-        one_hot(obs.active_prayer, 4),  # 0=none, 1=mage, 2=range, 3=melee
-        one_hot(obs.jad_attack, 4),     # 0=none, 1=mage, 2=range, 3=melee
-        one_hot(obs.restore_doses, 5),  # 0, 1, 2, 3, 4 doses
-        one_hot(obs.super_combat_doses, 5),  # 0, 1, 2, 3, 4 doses
-        one_hot(obs.sara_brew_doses, 5),  # 0, 1, 2, 3, 4 doses
-        # Binary features
-        np.array([float(obs.piety_active)], dtype=np.float32),
-        np.array([float(obs.player_aggro)], dtype=np.float32),
-        # Healer count (one-hot: 0, 1, 2, 3)
-        one_hot(min(obs.healer_count, 3), 4),
+        continuous,
+        player_aggro_onehot,
+        active_prayer_onehot,
+        jad_attack_onehot,
+        healer_1_aggro_onehot,
+        healer_2_aggro_onehot,
+        healer_3_aggro_onehot,
+        binary,
     ])

@@ -20,17 +20,20 @@ from observations import obs_to_array, NORMALIZE_MASK
 from vec_normalize import RunningNormalizer
 from env import Observation
 
-# Action names for logging
+# Action names for logging (must match TypeScript/Python enums)
 ACTIONS = {
-    0: "WAIT",
-    1: "PRAY_MAGE",
-    2: "PRAY_RANGE",
-    3: "DRINK_RESTORE",
-    4: "ATTACK",
-    5: "PRAY_MELEE",
-    6: "DRINK_SUPER_COMBAT",
-    7: "TOGGLE_PIETY",
-    8: "DRINK_SARA_BREW",
+    0: "DO_NOTHING",
+    1: "AGGRO_JAD",
+    2: "AGGRO_HEALER_1",
+    3: "AGGRO_HEALER_2",
+    4: "AGGRO_HEALER_3",
+    5: "TOGGLE_PROTECT_MELEE",
+    6: "TOGGLE_PROTECT_MISSILES",
+    7: "TOGGLE_PROTECT_MAGIC",
+    8: "TOGGLE_PIETY",
+    9: "DRINK_SUPER_COMBAT",
+    10: "DRINK_SUPER_RESTORE",
+    11: "DRINK_SARA_BREW",
 }
 
 
@@ -127,16 +130,50 @@ class AgentServer:
         """Get action, value, and processed observation from observation dictionary."""
         # Convert dict to Observation dataclass
         obs = Observation(
+            # Player state
             player_hp=obs_dict.get("player_hp", 99),
             player_prayer=obs_dict.get("player_prayer", 99),
+            player_attack=obs_dict.get("player_attack", 99),
+            player_strength=obs_dict.get("player_strength", 99),
+            player_defence=obs_dict.get("player_defence", 99),
+            player_x=obs_dict.get("player_x", 0),
+            player_y=obs_dict.get("player_y", 0),
+            player_aggro=obs_dict.get("player_aggro", 0),
+
+            # Prayer state
             active_prayer=obs_dict.get("active_prayer", 0),
-            jad_hp=obs_dict.get("jad_hp", 255),
-            jad_attack=obs_dict.get("jad_attack", 0),
-            restore_doses=obs_dict.get("restore_doses", 0),
+            piety_active=obs_dict.get("piety_active", False),
+
+            # Inventory
             super_combat_doses=obs_dict.get("super_combat_doses", 0),
             sara_brew_doses=obs_dict.get("sara_brew_doses", 0),
-            piety_active=obs_dict.get("piety_active", False),
-            player_aggro=obs_dict.get("player_aggro", False),
+            super_restore_doses=obs_dict.get("super_restore_doses", 0),
+
+            # Jad state
+            jad_hp=obs_dict.get("jad_hp", 350),
+            jad_attack=obs_dict.get("jad_attack", 0),
+            jad_x=obs_dict.get("jad_x", 0),
+            jad_y=obs_dict.get("jad_y", 0),
+
+            # Healer state
+            healers_spawned=obs_dict.get("healers_spawned", False),
+            healer_1_hp=obs_dict.get("healer_1_hp", 0),
+            healer_1_x=obs_dict.get("healer_1_x", 0),
+            healer_1_y=obs_dict.get("healer_1_y", 0),
+            healer_1_aggro=obs_dict.get("healer_1_aggro", 0),
+            healer_2_hp=obs_dict.get("healer_2_hp", 0),
+            healer_2_x=obs_dict.get("healer_2_x", 0),
+            healer_2_y=obs_dict.get("healer_2_y", 0),
+            healer_2_aggro=obs_dict.get("healer_2_aggro", 0),
+            healer_3_hp=obs_dict.get("healer_3_hp", 0),
+            healer_3_x=obs_dict.get("healer_3_x", 0),
+            healer_3_y=obs_dict.get("healer_3_y", 0),
+            healer_3_aggro=obs_dict.get("healer_3_aggro", 0),
+
+            # Starting doses for normalization
+            starting_super_combat_doses=obs_dict.get("starting_super_combat_doses", 4),
+            starting_sara_brew_doses=obs_dict.get("starting_sara_brew_doses", 4),
+            starting_super_restore_doses=obs_dict.get("starting_super_restore_doses", 4),
         )
 
         # Convert to array

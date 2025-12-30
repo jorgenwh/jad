@@ -37,7 +37,7 @@ class JadGymnasiumEnv(gym.Env):
             shape=(OBS_DIM,),
             dtype=np.float32,
         )
-        self.action_space = spaces.Discrete(9)
+        self.action_space = spaces.Discrete(JadEnv.NUM_ACTIONS)
 
         # State tracking
         self.prev_obs: Observation | None = None

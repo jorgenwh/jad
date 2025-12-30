@@ -23,6 +23,7 @@ import {
 } from 'osrs-sdk';
 
 import { YtHurKot } from './healer';
+import { JadRegion } from './jad-region';
 
 const JadModel = Assets.getAssetUrl("models/7700_33012.glb");
 const JadRangeProjectileModel = Assets.getAssetUrl("models/jad_range.glb");
@@ -238,6 +239,9 @@ export class Jad extends Mob {
             { aggro: this },
           );
           this.region.addMob(healer);
+
+          // Register healer with region for stable index tracking
+          (this.region as JadRegion).registerHealer(i, healer);
         }
       }
     }

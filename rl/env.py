@@ -20,17 +20,50 @@ class TerminationState(Enum):
 
 @dataclass
 class Observation:
+    # Player state
     player_hp: int
     player_prayer: int
-    active_prayer: int  # 0=none, 1=mage, 2=range, 3=melee
-    jad_hp: int
-    jad_attack: int  # 0=none, 1=mage, 2=range, 3=melee
-    restore_doses: int
+    player_attack: int      # Current attack stat (1-118)
+    player_strength: int    # Current strength stat (1-118)
+    player_defence: int     # Current defence stat (1-118)
+    player_x: int           # Player x position (0-19)
+    player_y: int           # Player y position (0-19)
+    player_aggro: int       # 0=none, 1=jad, 2=healer1, 3=healer2, 4=healer3
+
+    # Prayer state
+    active_prayer: int      # 0=none, 1=mage, 2=range, 3=melee
+    piety_active: bool
+
+    # Inventory
     super_combat_doses: int
     sara_brew_doses: int
-    piety_active: bool
-    player_aggro: bool  # Whether player is attacking Jad
-    healer_count: int  # Number of alive healers (0-3)
+    super_restore_doses: int
+
+    # Jad state
+    jad_hp: int
+    jad_attack: int         # 0=none, 1=mage, 2=range, 3=melee
+    jad_x: int              # Jad x position (0-19)
+    jad_y: int              # Jad y position (0-19)
+
+    # Healer state
+    healers_spawned: bool
+    healer_1_hp: int        # 0 if not present
+    healer_1_x: int
+    healer_1_y: int
+    healer_1_aggro: int     # 0=not_present, 1=jad, 2=player
+    healer_2_hp: int
+    healer_2_x: int
+    healer_2_y: int
+    healer_2_aggro: int
+    healer_3_hp: int
+    healer_3_x: int
+    healer_3_y: int
+    healer_3_aggro: int
+
+    # Starting doses for normalization
+    starting_super_combat_doses: int
+    starting_sara_brew_doses: int
+    starting_super_restore_doses: int
 
 
 @dataclass
@@ -42,16 +75,20 @@ class StepResult:
 class JadEnv:
     """Environment for Jad prayer switching simulation."""
 
-    # Action constants
-    WAIT = 0
-    PRAY_MAGE = 1         # Toggle protect from magic
-    PRAY_RANGE = 2        # Toggle protect from range
-    DRINK_RESTORE = 3
-    ATTACK = 4
-    PRAY_MELEE = 5        # Toggle protect from melee
-    DRINK_SUPER_COMBAT = 6
-    TOGGLE_PIETY = 7
-    DRINK_SARA_BREW = 8
+    # Action constants (12 discrete actions)
+    DO_NOTHING = 0
+    AGGRO_JAD = 1
+    AGGRO_HEALER_1 = 2
+    AGGRO_HEALER_2 = 3
+    AGGRO_HEALER_3 = 4
+    TOGGLE_PROTECT_MELEE = 5
+    TOGGLE_PROTECT_MISSILES = 6
+    TOGGLE_PROTECT_MAGIC = 7
+    TOGGLE_PIETY = 8
+    DRINK_SUPER_COMBAT = 9
+    DRINK_SUPER_RESTORE = 10
+    DRINK_SARA_BREW = 11
+    NUM_ACTIONS = 12
 
     def __init__(self):
         self._proc: subprocess.Popen | None = None
@@ -88,17 +125,50 @@ class JadEnv:
     def _parse_observation(self, obs: dict) -> Observation:
         """Parse observation dict into Observation dataclass."""
         return Observation(
+            # Player state
             player_hp=obs["player_hp"],
             player_prayer=obs["player_prayer"],
+            player_attack=obs.get("player_attack", 99),
+            player_strength=obs.get("player_strength", 99),
+            player_defence=obs.get("player_defence", 99),
+            player_x=obs.get("player_x", 0),
+            player_y=obs.get("player_y", 0),
+            player_aggro=obs.get("player_aggro", 0),
+
+            # Prayer state
             active_prayer=obs["active_prayer"],
-            jad_hp=obs["jad_hp"],
-            jad_attack=obs["jad_attack"],
-            restore_doses=obs["restore_doses"],
+            piety_active=obs.get("piety_active", False),
+
+            # Inventory
             super_combat_doses=obs.get("super_combat_doses", 0),
             sara_brew_doses=obs.get("sara_brew_doses", 0),
-            piety_active=obs.get("piety_active", False),
-            player_aggro=obs.get("player_aggro", False),
-            healer_count=obs.get("healer_count", 0),
+            super_restore_doses=obs.get("super_restore_doses", 0),
+
+            # Jad state
+            jad_hp=obs["jad_hp"],
+            jad_attack=obs["jad_attack"],
+            jad_x=obs.get("jad_x", 0),
+            jad_y=obs.get("jad_y", 0),
+
+            # Healer state
+            healers_spawned=obs.get("healers_spawned", False),
+            healer_1_hp=obs.get("healer_1_hp", 0),
+            healer_1_x=obs.get("healer_1_x", 0),
+            healer_1_y=obs.get("healer_1_y", 0),
+            healer_1_aggro=obs.get("healer_1_aggro", 0),
+            healer_2_hp=obs.get("healer_2_hp", 0),
+            healer_2_x=obs.get("healer_2_x", 0),
+            healer_2_y=obs.get("healer_2_y", 0),
+            healer_2_aggro=obs.get("healer_2_aggro", 0),
+            healer_3_hp=obs.get("healer_3_hp", 0),
+            healer_3_x=obs.get("healer_3_x", 0),
+            healer_3_y=obs.get("healer_3_y", 0),
+            healer_3_aggro=obs.get("healer_3_aggro", 0),
+
+            # Starting doses for normalization
+            starting_super_combat_doses=obs.get("starting_super_combat_doses", 4),
+            starting_sara_brew_doses=obs.get("starting_sara_brew_doses", 4),
+            starting_super_restore_doses=obs.get("starting_super_restore_doses", 4),
         )
 
     def reset(self) -> Observation:
