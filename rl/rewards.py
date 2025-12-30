@@ -16,7 +16,7 @@ REWARD_FUNCTIONS: dict[str, Callable] = {}
 
 
 def reward_function(name: str):
-    """Decorator to register a reward function."""
+    """Decorator to register a reward function"""
     def decorator(fn: Callable) -> Callable:
         REWARD_FUNCTIONS[name] = fn
         return fn
@@ -24,7 +24,7 @@ def reward_function(name: str):
 
 
 def list_reward_functions() -> list[str]:
-    """Return list of available reward function names."""
+    """Return list of available reward function names"""
     return list(REWARD_FUNCTIONS.keys())
 
 
@@ -55,14 +55,15 @@ def compute_reward(
     return fn(obs, prev_obs, termination, episode_length)
 
 
-def healer_tag_reward(obs: Observation, prev_obs: Observation, tag_reward: float = 5.0) -> float:
+def healer_tag_reward(obs: Observation, prev_obs: Observation) -> float:
     """
     Compute reward for tagging healers (pulling them off Jad).
 
-    Returns <tag_reward> for each healer whose aggro transitions from JAD to PLAYER.
+    Returns +5 for each healer whose aggro transitions from JAD to PLAYER.
     This is a one-time reward per healer per spawn.
     """
     reward = 0.0
+    tag_reward = 5.0
 
     for healer, prev_healer in zip(obs.healers, prev_obs.healers):
         if (prev_healer.aggro == HEALER_AGGRO_JAD and
@@ -88,22 +89,6 @@ def prayer_landing_reward(obs: Observation, prev_obs: Observation,
     return reward
 
 
-def terminal_reward(obs: Observation, termination: TerminationState,
-                    episode_length: int,
-                    kill: float = 100.0, death: float = -200.0,
-                    timeout: float = -150.0, time_penalty: float = 0.1) -> float:
-    """Compute terminal reward based on episode outcome."""
-    match termination:
-        case TerminationState.JAD_KILLED:
-            return kill * obs.jad_count - episode_length * time_penalty
-        case TerminationState.PLAYER_DIED:
-            return death
-        case TerminationState.TRUNCATED:
-            return timeout
-        case _:
-            return 0.0
-
-
 @reward_function("default")
 def reward_default(
     obs: Observation,
@@ -111,18 +96,14 @@ def reward_default(
     termination: TerminationState,
     episode_length: int,
 ) -> float:
-    """
-    Default reward function with balanced shaping.
-    - Prayer switching on landing tick
-    - Combat engagement penalties
-    - Buff maintenance (rigour, ranged stat)
-    - Healer management
-    """
     reward = 0.0
 
+    if prev_obs is None:
+        # First tick - no per-step rewards
+        return reward
+
     # Prayer switching - only on landing tick
-    if prev_obs is not None:
-        reward += prayer_landing_reward(obs, prev_obs, correct=2.5, wrong=-7.5)
+    reward += prayer_landing_reward(obs, prev_obs, correct=2.5, wrong=-7.5)
 
     # Penalty for not being in combat
     if obs.player_aggro == 0:
@@ -135,31 +116,29 @@ def reward_default(
     # Penalty for low ranged stat (encourages bastion)
     reward -= (1 - (obs.player_ranged / 112.0))
 
-    # Per-step rewards
-    if prev_obs is not None:
-        # Damage taken penalty
-        damage_taken = prev_obs.player_hp - obs.player_hp
-        if damage_taken > 0:
-            reward -= damage_taken * 0.1
+    # Damage taken penalty
+    damage_taken = prev_obs.player_hp - obs.player_hp
+    if damage_taken > 0:
+        reward -= damage_taken * 0.1
 
-        # Jad healing penalty
-        for jad, prev_jad in zip(obs.jads, prev_obs.jads):
-            jad_healed = jad.hp - prev_jad.hp
-            if jad_healed > 0:
-                reward -= jad_healed * 0.3
+    # Jad healing penalty
+    for jad, prev_jad in zip(obs.jads, prev_obs.jads):
+        jad_healed = jad.hp - prev_jad.hp
+        if jad_healed > 0:
+            reward -= jad_healed * 0.3
 
-        # Healer tagging reward
-        reward += healer_tag_reward(obs, prev_obs)
+    # Healer tagging reward
+    reward += healer_tag_reward(obs, prev_obs)
 
     # Terminal rewards
     match termination:
         case TerminationState.JAD_KILLED:
-            reward += 100.0 * obs.jad_count
-            reward -= episode_length * 0.1
+            reward += 100.0
+            reward -= episode_length * 0.1  # Faster kills are better
         case TerminationState.PLAYER_DIED:
-            reward -= 200
+            reward -= 200.0  # Death is catastrophic - agent must learn to NEVER die
         case TerminationState.TRUNCATED:
-            reward -= 150
+            reward -= 150.0  # Timeout is worse than dying - discourages passivity
 
     return reward
 
@@ -171,17 +150,10 @@ def reward_sparse(
     termination: TerminationState,
     episode_length: int,
 ) -> float:
-    """
-    Sparse reward - only terminal rewards.
-    Good for testing if agent can learn from pure outcome signal.
-    """
     match termination:
         case TerminationState.JAD_KILLED:
             return 1
-        case TerminationState.PLAYER_DIED:
-            return -1
-        case TerminationState.TRUNCATED:
+        case TerminationState.PLAYER_DIED | TerminationState.TRUNCATED:
             return -1
         case _:
-            return 0.0
-
+            return 0
