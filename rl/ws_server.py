@@ -155,14 +155,41 @@ class AgentServer:
 
         if self.is_sb3:
             # SB3 model - use predict with LSTM state
-            action, self.lstm_state = self.model.predict(
-                obs_array,
-                state=self.lstm_state,
-                deterministic=True,
-            )
-            # Value estimation for RecurrentPPO is complex due to LSTM state format
-            # Return 0.0 as placeholder - main debugging info is observation/action
-            return int(action), 0.0, processed_obs
+            try:
+                action, self.lstm_state = self.model.predict(
+                    obs_array,
+                    state=self.lstm_state,
+                    deterministic=True,
+                )
+            except Exception as e:
+                print(f"Predict failed: {e}")
+                print(f"  obs_array shape: {obs_array.shape}")
+                print(f"  lstm_state: {type(self.lstm_state)}")
+                if self.lstm_state is not None:
+                    print(f"  lstm_state[0]: {[x.shape for x in self.lstm_state[0]]}")
+                    print(f"  lstm_state[1]: {[x.shape for x in self.lstm_state[1]]}")
+                raise
+            # Try to get value estimate from the policy
+            value = 0.0
+            try:
+                if self.lstm_state is not None:
+                    obs_tensor = torch.as_tensor(obs_array).float().unsqueeze(0).to(self.model.device)
+                    # LSTM states from predict: (hidden_list, cell_list)
+                    # Each list contains arrays of shape (n_envs, hidden_size)
+                    # predict_values expects (hidden, cell) each with shape (n_layers, n_envs, hidden_size)
+                    hidden = torch.as_tensor(self.lstm_state[0][0]).unsqueeze(0).to(self.model.device)
+                    cell = torch.as_tensor(self.lstm_state[1][0]).unsqueeze(0).to(self.model.device)
+                    lstm_states = (hidden, cell)
+                    episode_starts = torch.as_tensor([False]).float().to(self.model.device)
+                    value = self.model.policy.predict_values(
+                        obs_tensor, lstm_states, episode_starts
+                    )
+                    value = float(value.item())
+            except Exception as e:
+                # Value extraction failed, log and keep default 0.0
+                print(f"Value extraction failed: {e}")
+                print(f"  {type(e).__name__}: {e}")
+            return int(action), value, processed_obs
         else:
             # Custom model - use deterministic action selection
             with torch.no_grad():
