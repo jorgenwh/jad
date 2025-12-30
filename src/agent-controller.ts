@@ -376,7 +376,10 @@ export class AgentController {
       if (targetPrayer.isActive) {
         targetPrayer.deactivate();
       } else {
-        targetPrayer.activate(this.player);
+        // Can't activate prayers with 0 prayer points
+        if ((this.player.currentStats?.prayer ?? 0) > 0) {
+          targetPrayer.activate(this.player);
+        }
       }
     }
   }

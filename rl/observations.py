@@ -19,7 +19,7 @@ MAX_PRAYER = 99
 MAX_MELEE_STAT = 118     # Super combat boosted (attack, strength, defence)
 MAX_RANGED_STAT = 112    # Bastion boosted (99 + 13)
 MAX_MAGIC_STAT = 109     # Imbued heart boosted (99 + 10)
-MAX_COORD = 19           # 20x20 grid (0-19)
+MAX_COORD = 26           # 27x27 grid (0-26)
 MAX_JAD_HP = 350
 MAX_HEALER_HP = 90
 

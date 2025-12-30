@@ -74,14 +74,27 @@ function getAttackSpeed(jadCount: number): number {
 }
 
 /**
- * Calculate attack offset for each Jad to stagger attacks.
+ * Calculate attack offset for a given position in the attack order.
  * Evenly distributes first attacks across the attack cycle.
+ * @param orderPosition - Position in the attack order (0 = attacks first)
+ * @param jadCount - Total number of Jads
  */
-function getAttackOffset(jadIndex: number, jadCount: number): number {
+function getAttackOffset(orderPosition: number, jadCount: number): number {
   const attackSpeed = getAttackSpeed(jadCount);
   // Stagger attacks evenly across the attack speed window
   // E.g., for 3 Jads with attack speed 9: offsets of 1, 4, 7 (like InfernoTrainer)
-  return 1 + Math.floor((jadIndex * attackSpeed) / jadCount);
+  return 1 + Math.floor((orderPosition * attackSpeed) / jadCount);
+}
+
+/**
+ * Fisher-Yates shuffle for randomizing attack order.
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
 // Healer array type (3 healers per Jad)
@@ -256,10 +269,16 @@ export class JadRegion extends Region {
     const spawnPositions = JAD_SPAWN_POSITIONS[this.config.jadCount - 1] || JAD_SPAWN_POSITIONS[0];
     const attackSpeed = getAttackSpeed(this.config.jadCount);
 
+    // Randomize attack order each episode to prevent learning bias
+    // where the agent always targets a specific Jad based on attack timing
+    const attackOrder = shuffleArray(
+      Array.from({ length: this.config.jadCount }, (_, i) => i)
+    );
+
     for (let i = 0; i < this.config.jadCount; i++) {
       const pos = spawnPositions[i];
-      // Use cooldown to set initial attack delay for staggered attacks
-      const attackOffset = getAttackOffset(i, this.config.jadCount);
+      // Use shuffled position in attack order for this Jad's timing
+      const attackOffset = getAttackOffset(attackOrder[i], this.config.jadCount);
       const jad = new Jad(this, pos, i, this.config.healersPerJad, attackSpeed, {
         aggro: player,
         cooldown: attackOffset,  // Initial attackDelay offset
