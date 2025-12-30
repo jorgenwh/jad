@@ -123,8 +123,8 @@ class AgentServer:
             print(f"Checkpoint not found: {checkpoint_path}")
             raise
 
-    def get_action(self, obs_dict: dict) -> int:
-        """Get action from observation dictionary."""
+    def get_action(self, obs_dict: dict) -> tuple[int, float, list]:
+        """Get action, value, and processed observation from observation dictionary."""
         # Convert dict to Observation dataclass
         obs = Observation(
             player_hp=obs_dict.get("player_hp", 99),
@@ -150,6 +150,9 @@ class AgentServer:
         result[self.normalize_mask] = normalized_continuous
         obs_array = result
 
+        # Store processed array for debugging
+        processed_obs = obs_array.tolist()
+
         if self.is_sb3:
             # SB3 model - use predict with LSTM state
             action, self.lstm_state = self.model.predict(
@@ -157,12 +160,14 @@ class AgentServer:
                 state=self.lstm_state,
                 deterministic=True,
             )
-            return int(action)
+            # Value estimation for RecurrentPPO is complex due to LSTM state format
+            # Return 0.0 as placeholder - main debugging info is observation/action
+            return int(action), 0.0, processed_obs
         else:
             # Custom model - use deterministic action selection
             with torch.no_grad():
-                action, _, _ = self.agent.select_action(obs_array, deterministic=True)
-            return action
+                action, _, value = self.agent.select_action(obs_array, deterministic=True)
+            return action, float(value.item()), processed_obs
 
     def reset_state(self):
         """Reset LSTM state for new episode."""
@@ -182,12 +187,15 @@ class AgentServer:
 
                     if data.get("type") == "observation":
                         obs = data.get("observation", {})
-                        action = self.get_action(obs)
+                        action, value, processed_obs = self.get_action(obs)
 
                         response = {
                             "type": "action",
                             "action": action,
                             "action_name": ACTIONS.get(action, "UNKNOWN"),
+                            "value": value,
+                            "observation": obs,  # Original dict for readable display
+                            "processed_obs": processed_obs,  # Actual array fed to model
                         }
                         await websocket.send(json.dumps(response))
 

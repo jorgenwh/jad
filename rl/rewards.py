@@ -36,7 +36,7 @@ def compute_reward(
         # Damage dealt reward
         damage_dealt = prev_obs.jad_hp - obs.jad_hp
         if damage_dealt > 0:
-            reward += damage_dealt * 0.75
+            reward += damage_dealt * 0.1
 
     # Terminal rewards
     match termination:

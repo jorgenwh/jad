@@ -184,7 +184,9 @@ export class HeadlessEnv {
       if (item && item instanceof Potion && item.doses > 0) {
         const itemName = item.itemName?.toString().toLowerCase() || '';
         if (itemName.includes(potionType)) {
-          item.drink(this.player);
+          // Use inventoryLeftClick to properly go through eating system
+          // This decrements doses and queues the potion effect for next tick
+          item.inventoryLeftClick(this.player);
           break;
         }
       }
