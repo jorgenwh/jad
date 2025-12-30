@@ -16,7 +16,8 @@ import numpy as np
 import torch
 from websockets.asyncio.server import serve
 
-from observations import obs_to_array
+from observations import obs_to_array, NORMALIZE_MASK
+from vec_normalize import RunningNormalizer
 from env import Observation
 
 # Action names for logging
@@ -50,16 +51,37 @@ class AgentServer:
     def _load_custom(self, checkpoint_path: str | None):
         """Load custom .pt checkpoint."""
         from agent import PPOAgent
+        from pathlib import Path
 
         self.agent = PPOAgent()
-        self.agent.training = False
         self.agent.eval_mode()
         self.agent.reset_hidden()
+
+        # Set up observation normalizer (same as SelectiveVecNormalize)
+        n_continuous = int(np.sum(NORMALIZE_MASK))
+        self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
+        self.normalize_mask = NORMALIZE_MASK
 
         if checkpoint_path:
             try:
                 self.agent.load(checkpoint_path)
                 print(f"Loaded custom checkpoint: {checkpoint_path}")
+
+                # Load normalizer stats saved by SelectiveVecNormalize during training
+                checkpoint_dir = Path(checkpoint_path).parent
+                normalizer_path = checkpoint_dir / "normalizer.npz"
+                if normalizer_path.exists():
+                    data = np.load(normalizer_path)
+                    # Only need obs normalizer for inference (rewards not used)
+                    self.obs_normalizer.load_state_dict({
+                        "mean": data["obs_mean"],
+                        "var": data["obs_var"],
+                        "count": int(data["obs_count"]),
+                    })
+                    print(f"Loaded normalizer stats: {normalizer_path}")
+                else:
+                    print(f"Warning: No normalizer stats found at {normalizer_path}")
+                    print("  Observations will not be normalized correctly!")
             except FileNotFoundError:
                 print(f"Checkpoint not found: {checkpoint_path}")
                 print("Using untrained agent")
@@ -69,6 +91,7 @@ class AgentServer:
     def _load_sb3(self, checkpoint_path: str):
         """Load SB3 .zip checkpoint."""
         from sb3_contrib import RecurrentPPO
+        from pathlib import Path
 
         self.is_sb3 = True
         try:
@@ -76,16 +99,26 @@ class AgentServer:
             self.lstm_state = None  # Will be initialized on first prediction
             print(f"Loaded SB3 checkpoint: {checkpoint_path}")
 
-            # Set up observation normalizer (same as JadGymnasiumEnv)
-            from observations import NORMALIZE_MASK
-            from normalizer import RunningNormalizer
+            # Set up observation normalizer (matching SelectiveVecNormalize used in training)
             n_continuous = int(np.sum(NORMALIZE_MASK))
             self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
             self.normalize_mask = NORMALIZE_MASK
-            # Note: normalizer starts fresh - for proper inference, we'd need to
-            # save/load normalizer stats, but SB3 models are trained with
-            # normalization inside the env, so observations should be normalized
-            # the same way during inference
+
+            # Load normalizer stats saved by SelectiveVecNormalize during training
+            checkpoint_dir = Path(checkpoint_path).parent
+            normalizer_path = checkpoint_dir / "normalizer_sb3.npz"
+            if normalizer_path.exists():
+                data = np.load(normalizer_path)
+                # Only need obs normalizer for inference (rewards not used)
+                self.obs_normalizer.load_state_dict({
+                    "mean": data["obs_mean"],
+                    "var": data["obs_var"],
+                    "count": int(data["obs_count"]),
+                })
+                print(f"Loaded normalizer stats: {normalizer_path}")
+            else:
+                print(f"Warning: No normalizer stats found at {normalizer_path}")
+                print("  Observations will not be normalized correctly!")
         except FileNotFoundError:
             print(f"Checkpoint not found: {checkpoint_path}")
             raise
@@ -109,15 +142,15 @@ class AgentServer:
         # Convert to array
         obs_array = obs_to_array(obs)
 
-        if self.is_sb3:
-            # Normalize only continuous features (matching training)
-            result = obs_array.copy()
-            continuous = obs_array[self.normalize_mask]
-            self.obs_normalizer.update(continuous)
-            normalized_continuous = self.obs_normalizer.normalize(continuous)
-            result[self.normalize_mask] = normalized_continuous
-            obs_array = result
+        # Normalize only continuous features (matching training)
+        # Both custom and SB3 models now use external normalization
+        result = obs_array.copy()
+        continuous = obs_array[self.normalize_mask]
+        normalized_continuous = self.obs_normalizer.normalize(continuous)
+        result[self.normalize_mask] = normalized_continuous
+        obs_array = result
 
+        if self.is_sb3:
             # SB3 model - use predict with LSTM state
             action, self.lstm_state = self.model.predict(
                 obs_array,

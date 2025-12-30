@@ -14,10 +14,11 @@ import time
 from pathlib import Path
 
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
 from jad_gymnasium_env import make_jad_env, OBS_DIM
+from vec_normalize import SelectiveVecNormalize
 
 
 class EpisodeStatsCallback(BaseCallback):
@@ -28,29 +29,49 @@ class EpisodeStatsCallback(BaseCallback):
 
     def __init__(
         self,
+        vec_normalize_env: SelectiveVecNormalize,
+        num_envs: int,
         log_interval: int = 100,
         save_path: str = "checkpoints/best_sb3.pt",
+        normalizer_path: str = "checkpoints/normalizer_sb3.npz",
         verbose: int = 1,
     ):
         super().__init__(verbose)
+        self.vec_normalize_env = vec_normalize_env
+        self.num_envs = num_envs
         self.log_interval = log_interval
         self.save_path = save_path
+        self.normalizer_path = normalizer_path
         self.best_mean_reward = float("-inf")
 
         # Track stats for current block of episodes
-        self.episode_rewards = []
+        self.episode_raw_rewards = []
+        self.episode_norm_rewards = []
         self.episode_lengths = []
         self.episode_kills = 0
         self.total_episodes = 0
+
+        # Track per-env normalized reward accumulation
+        self.current_norm_rewards = [0.0] * num_envs
 
         # Time tracking
         self.start_time = time.time()
 
     def _on_step(self) -> bool:
+        # Accumulate normalized rewards per env
+        rewards = self.locals.get("rewards", [])
+        for i, r in enumerate(rewards):
+            self.current_norm_rewards[i] += r
+
         # Track episode stats from VecEnv infos
-        for info in self.locals.get("infos", []):
+        infos = self.locals.get("infos", [])
+        dones = self.locals.get("dones", [])
+        for i, info in enumerate(infos):
             if "episode" in info:
-                self.episode_rewards.append(info["episode"]["r"])
+                # Raw reward from Monitor wrapper
+                self.episode_raw_rewards.append(info["episode"]["r"])
+                # Normalized reward we accumulated
+                self.episode_norm_rewards.append(self.current_norm_rewards[i])
                 self.episode_lengths.append(info["episode"]["l"])
                 self.total_episodes += 1
 
@@ -62,35 +83,47 @@ class EpisodeStatsCallback(BaseCallback):
                 if self.total_episodes % self.log_interval == 0:
                     self._log_stats()
 
+            # Reset normalized reward accumulator when episode ends
+            if dones[i] if i < len(dones) else False:
+                self.current_norm_rewards[i] = 0.0
+
         return True
 
     def _log_stats(self):
         """Log stats for the last block of episodes."""
-        if len(self.episode_rewards) == 0:
+        if len(self.episode_raw_rewards) == 0:
             return
 
         # Calculate stats for the last log_interval episodes
-        recent_rewards = self.episode_rewards[-self.log_interval :]
+        recent_raw_rewards = self.episode_raw_rewards[-self.log_interval :]
+        recent_norm_rewards = self.episode_norm_rewards[-self.log_interval :]
         recent_lengths = self.episode_lengths[-self.log_interval :]
 
-        # Multiply by 100 to show raw rewards (rewards are scaled /100 in env)
-        mean_reward = sum(recent_rewards) / len(recent_rewards) * 100
+        mean_raw_reward = sum(recent_raw_rewards) / len(recent_raw_rewards)
+        mean_norm_reward = sum(recent_norm_rewards) / len(recent_norm_rewards)
         mean_length = sum(recent_lengths) / len(recent_lengths)
         kills = self.episode_kills
 
         # Print stats
+        elapsed = int(time.time() - self.start_time)
+        elapsed_str = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
         start_ep = self.total_episodes - self.log_interval + 1
         print(
             f"Episodes {start_ep}-{self.total_episodes} | "
-            f"Avg Reward: {mean_reward:.1f} | "
-            f"Avg Length: {mean_length:.1f} | "
-            f"Kills: {kills}/{self.log_interval}"
+            f"Raw: {mean_raw_reward:.1f} | "
+            f"Norm: {mean_norm_reward:.2f} | "
+            f"Len: {mean_length:.0f} | "
+            f"Kills: {kills}/{self.log_interval} | "
+            f"Steps: {self.num_timesteps:,} | "
+            f"Time: {elapsed_str}"
         )
 
-        # Save if this is the best so far
-        if mean_reward > self.best_mean_reward:
-            self.best_mean_reward = mean_reward
+        # Save if this is the best so far (using raw reward for interpretability)
+        if mean_raw_reward > self.best_mean_reward:
+            self.best_mean_reward = mean_raw_reward
             self.model.save(self.save_path)
+            # Save normalizer stats alongside the model
+            self.vec_normalize_env.save_normalizer(self.normalizer_path)
             print(f"  [NEW BEST - saved to {self.save_path}]")
 
         # Reset kills counter for next block
@@ -144,8 +177,17 @@ def train(
     # Note: DummyVecEnv is often faster than SubprocVecEnv for fast environments
     # because it avoids inter-process communication overhead.
     # SubprocVecEnv only helps when env.step() is slow (physics, rendering, etc.)
-    # Observation normalization is handled inside JadGymnasiumEnv (matching train.py)
-    env = DummyVecEnv([make_jad_env() for _ in range(num_envs)])
+    venv = DummyVecEnv([make_jad_env() for _ in range(num_envs)])
+
+    # Wrap with SelectiveVecNormalize for shared observation normalization
+    # This normalizes only continuous features, leaving one-hot encodings unchanged
+    env = SelectiveVecNormalize(venv, training=True)
+
+    # Load normalizer stats if resuming
+    normalizer_path = checkpoint_path / "normalizer_sb3.npz"
+    if resume_path and normalizer_path.exists():
+        env.set_normalizer_state(SelectiveVecNormalize.load_normalizer(str(normalizer_path)))
+        print(f"Loaded normalizer stats: {normalizer_path}")
 
     print(f"Observation space: {env.observation_space}")
     print(f"Action space: {env.action_space}")
@@ -175,7 +217,7 @@ def train(
             vf_coef=vf_coef,
             max_grad_norm=max_grad_norm,
             policy_kwargs=policy_kwargs,
-            verbose=1,
+            verbose=0,
             device="auto",
         )
 
@@ -188,8 +230,11 @@ def train(
 
     # Create callback for tracking stats and saving best model
     callback = EpisodeStatsCallback(
+        vec_normalize_env=env,
+        num_envs=num_envs,
         log_interval=100,  # Print stats every 100 episodes
         save_path=str(checkpoint_path / "best_sb3"),
+        normalizer_path=str(normalizer_path),
         verbose=1,
     )
 
@@ -204,15 +249,18 @@ def train(
         model.learn(
             total_timesteps=total_timesteps,
             callback=callback,
-            progress_bar=True,
+            progress_bar=False,
         )
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
 
-    # Save final model
+    # Save final model and normalizer
     final_path = checkpoint_path / "final_sb3"
     model.save(str(final_path))
+    final_normalizer_path = checkpoint_path / "normalizer_final_sb3.npz"
+    env.save_normalizer(str(final_normalizer_path))
     print(f"\nSaved final model: {final_path}")
+    print(f"Saved final normalizer: {final_normalizer_path}")
     print(f"Best mean reward: {callback.best_mean_reward:.1f}")
 
     env.close()

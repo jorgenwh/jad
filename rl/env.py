@@ -5,8 +5,17 @@ Communicates with the Node.js headless simulation via JSON over stdio.
 
 import subprocess
 import json
+from enum import Enum, auto
 from pathlib import Path
 from dataclasses import dataclass
+
+
+class TerminationState(Enum):
+    """How an episode ended (or didn't)."""
+    ONGOING = auto()       # Episode still running
+    PLAYER_DIED = auto()   # Player HP reached 0
+    JAD_KILLED = auto()    # Jad HP reached 0
+    TRUNCATED = auto()     # Hit max episode length
 
 
 @dataclass

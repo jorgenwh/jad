@@ -8,8 +8,7 @@ import numpy as np
 from dataclasses import dataclass, field
 
 from model import ActorCritic
-from normalizer import RunningNormalizer
-from observations import OBS_DIM, NORMALIZE_MASK
+from observations import OBS_DIM
 
 
 @dataclass
@@ -93,13 +92,6 @@ class PPOAgent:
         self.model = ActorCritic(obs_dim, action_dim, hidden_dim).to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
-        # Observation normalizer (only for continuous features)
-        # Count how many features need normalization
-        self.normalize_mask = NORMALIZE_MASK
-        n_continuous = int(np.sum(self.normalize_mask))
-        self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
-        self.training = True  # Whether to update normalizer statistics
-
         # Rollout storage
         self.buffer = RolloutBuffer()
 
@@ -110,48 +102,19 @@ class PPOAgent:
         """Reset LSTM hidden state for new episode."""
         self.hidden = self.model.init_hidden(batch_size=1)
 
-    def normalize_obs(self, obs: np.ndarray, update: bool = True) -> np.ndarray:
-        """
-        Normalize observation using running statistics.
-
-        Only continuous features are normalized; one-hot features are left unchanged.
-
-        Args:
-            obs: Raw observation
-            update: Whether to update running statistics
-
-        Returns:
-            Normalized observation
-        """
-        obs = np.asarray(obs, dtype=np.float32)
-        result = obs.copy()
-
-        # Extract continuous features
-        continuous = obs[..., self.normalize_mask]
-
-        if update and self.training:
-            self.obs_normalizer.update(continuous)
-
-        # Normalize continuous features
-        normalized_continuous = self.obs_normalizer.normalize(continuous)
-
-        # Put normalized values back
-        result[..., self.normalize_mask] = normalized_continuous
-
-        return result
-
     def select_action(self, obs: np.ndarray) -> tuple[int, torch.Tensor, torch.Tensor]:
         """
         Select action given observation.
+
+        Args:
+            obs: Pre-normalized observation from SelectiveVecNormalize wrapper
 
         Returns:
             action: Selected action
             log_prob: Log probability
             value: State value estimate
         """
-        # Normalize observation
-        obs_normalized = self.normalize_obs(obs, update=self.training)
-        obs_tensor = torch.FloatTensor(obs_normalized).to(self.device)
+        obs_tensor = torch.FloatTensor(obs).to(self.device)
 
         with torch.no_grad():
             action, log_prob, value, self.hidden = self.model.get_action(
@@ -225,10 +188,8 @@ class PPOAgent:
         advantages = advantages.squeeze()
         returns = returns.squeeze()
 
-        # Prepare batch data - normalize observations (only continuous features)
-        raw_obs = np.array(self.buffer.observations)
-        normalized_obs = self.normalize_obs(raw_obs, update=False)
-        obs = torch.FloatTensor(normalized_obs).to(self.device)
+        # Prepare batch data (observations already normalized by SelectiveVecNormalize)
+        obs = torch.FloatTensor(np.array(self.buffer.observations)).to(self.device)
         actions = torch.LongTensor(self.buffer.actions).to(self.device)
         dones = torch.FloatTensor(self.buffer.dones).to(self.device)
         old_log_probs = torch.stack(self.buffer.log_probs).to(self.device).squeeze()
@@ -291,27 +252,23 @@ class PPOAgent:
         }
 
     def train_mode(self) -> None:
-        """Set agent to training mode (updates normalizer)."""
-        self.training = True
+        """Set agent to training mode."""
         self.model.train()
 
     def eval_mode(self) -> None:
-        """Set agent to evaluation mode (freezes normalizer)."""
-        self.training = False
+        """Set agent to evaluation mode."""
         self.model.eval()
 
     def save(self, path: str) -> None:
-        """Save model checkpoint including normalizer state."""
+        """Save model checkpoint."""
         torch.save({
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "normalizer_state_dict": self.obs_normalizer.state_dict(),
         }, path)
 
     def load(self, path: str) -> None:
-        """Load model checkpoint including normalizer state."""
+        """Load model checkpoint."""
         checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        if "normalizer_state_dict" in checkpoint:
-            self.obs_normalizer.load_state_dict(checkpoint["normalizer_state_dict"])
+        if "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

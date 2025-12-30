@@ -14,60 +14,11 @@ import numpy as np
 import torch
 from pathlib import Path
 
-from env import JadEnv, Observation
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+from jad_gymnasium_env import make_jad_env
+from vec_normalize import SelectiveVecNormalize
 from agent import PPOAgent
-from observations import obs_to_array
-
-
-MAX_EPISODE_LENGTH = 300  # Hard cap - must kill Jad within this many ticks
-
-
-def compute_reward(
-    obs: Observation,
-    prev_obs: Observation | None,
-    terminated: bool,
-    episode_length: int = 0,
-) -> float:
-    """
-    Original reward structure that learns well.
-    Episode length is capped externally to prevent stalling exploit.
-    """
-    reward = 0.0
-
-    # Prayer switching feedback - every tick jad is attacking
-    if prev_obs is not None and prev_obs.jad_attack != 0:
-        if obs.active_prayer == prev_obs.jad_attack:
-            reward += 1
-        else:
-            reward -= 1
-
-    # Survival bonus
-    reward += 0.1
-
-    if not obs.player_aggro:
-        reward -= 1  # Penalty for not attacking Jad
-
-    if prev_obs is not None:
-        # Damage taken penalty
-        damage_taken = prev_obs.player_hp - obs.player_hp
-        if damage_taken > 0:
-            reward -= damage_taken * 0.1
-
-        # Damage dealt reward
-        damage_dealt = prev_obs.jad_hp - obs.jad_hp
-        if damage_dealt > 0:
-            reward += damage_dealt * 0.1
-
-    # Terminal rewards
-    if terminated:
-        if obs.player_hp <= 0:
-            reward -= 100.0  # Death
-        elif obs.jad_hp <= 0:
-            reward += 100.0  # Win
-
-            reward -= episode_length * 0.25  # Faster kills are better
-
-    return reward
 
 
 def train(
@@ -88,19 +39,30 @@ def train(
     # Create checkpoint directory
     checkpoint_path = Path(checkpoint_dir)
     checkpoint_path.mkdir(exist_ok=True)
+    normalizer_path = checkpoint_path / "normalizer.npz"
 
-    # Initialize
-    env = JadEnv()
+    # Create environment with SelectiveVecNormalize wrapper
+    # Even with single env, use the wrapper for consistent normalization
+    venv = DummyVecEnv([make_jad_env()])
+    env = SelectiveVecNormalize(venv, training=True)
+
+    # Initialize agent
     agent = PPOAgent()
 
     # Tracking
-    episode_rewards = []
+    episode_raw_rewards = []
+    episode_norm_rewards = []
     episode_lengths = []
     total_wins = 0
     interval_wins = 0
-    best_avg_reward = float('-inf')  # Track best model
+    best_avg_reward = float('-inf')
     total_steps = 0
     start_time = time.time()
+
+    # Current episode tracking
+    current_episode_raw_reward = 0.0
+    current_episode_norm_reward = 0.0
+    current_episode_length = 0
 
     # Handle unlimited episodes
     unlimited = num_episodes == 0
@@ -113,116 +75,103 @@ def train(
     else:
         print(f"Starting training for {num_episodes} episodes...")
 
-    # Initialize hidden state once at start
+    # Initialize
     agent.reset_hidden()
+    obs = env.reset()  # Shape: (1, obs_dim) - already normalized
+    episode_count = 0
 
     try:
-        for episode in range(num_episodes):
-            obs = env.reset()
-            # Reset hidden at episode start (new episode = fresh context)
-            agent.reset_hidden()
+        while episode_count < num_episodes:
+            # Store initial hidden state at the start of a new rollout sequence
+            if len(agent.buffer) == 0:
+                agent.store_initial_hidden()
 
-            episode_reward = 0
-            episode_length = 0
+            # Select action (obs is already normalized by SelectiveVecNormalize)
+            obs_flat = obs[0]  # Remove batch dimension for agent
+            action, log_prob, value = agent.select_action(obs_flat)
 
-            while True:
-                # Store initial hidden state at the start of a new rollout sequence
-                if len(agent.buffer) == 0:
-                    agent.store_initial_hidden()
+            # Take step (action needs to be array for VecEnv)
+            next_obs, reward, done, info = env.step(np.array([action]))
 
-                # Convert observation
-                obs_array = obs_to_array(obs)
+            # Reward is normalized by SelectiveVecNormalize (VecNormalize-style)
+            reward_scalar = reward[0]
 
-                # Select action
-                action, log_prob, value = agent.select_action(obs_array)
+            # Accumulate both raw and normalized rewards for logging
+            current_episode_raw_reward += info[0].get("raw_reward", 0.0)
+            current_episode_norm_reward += reward_scalar
+            current_episode_length += 1
+            total_steps += 1
 
-                # Take step
-                result = env.step(action)
+            # Store transition
+            agent.store_transition(
+                obs_flat, action, log_prob, value, reward_scalar, done[0]
+            )
 
-                # Compute reward (obs = state before action, result.observation = state after)
-                raw_reward = compute_reward(result.observation, obs, result.terminated, episode_length)
-                episode_reward += raw_reward
-
-                # Scale reward to roughly [-1, 1] range
-                scaled_reward = raw_reward / 100.0
-
-                # Store transition
-                agent.store_transition(
-                    obs_array, action, log_prob, value, scaled_reward, result.terminated
-                )
-                episode_length += 1
-                total_steps += 1
-
-                # Update if enough steps collected
-                if len(agent.buffer) >= update_interval:
-                    # Get next value for GAE (use normalized observation)
-                    next_obs_array = obs_to_array(result.observation)
-                    next_obs_normalized = agent.normalize_obs(next_obs_array, update=False)
-                    with torch.no_grad():
-                        next_obs_tensor = torch.FloatTensor(next_obs_normalized).to(agent.device)
-                        _, next_value, _ = agent.model.forward(
-                            next_obs_tensor.unsqueeze(0), agent.hidden
-                        )
-                        if result.terminated:
-                            next_value = torch.zeros_like(next_value)
-
-                    losses = agent.update(next_value)
-                    # Note: Don't reset hidden here - it continues from current state
-                    # The next rollout will store the current hidden as its initial state
-
-                # Update state
-                obs = result.observation
-
-                # Check for timeout (stalling prevention)
-                if episode_length >= MAX_EPISODE_LENGTH and not result.terminated:
-                    # Timeout - treat as death
-                    episode_reward -= 100.0
-                    timeout_reward = -100.0 / 100.0  # Scaled
-                    agent.store_transition(
-                        obs_to_array(obs), 0, log_prob, value, timeout_reward, True
+            # Update if enough steps collected
+            if len(agent.buffer) >= update_interval:
+                # Get next value for GAE
+                with torch.no_grad():
+                    next_obs_tensor = torch.FloatTensor(next_obs[0]).to(agent.device)
+                    _, next_value, _ = agent.model.forward(
+                        next_obs_tensor.unsqueeze(0), agent.hidden
                     )
-                    agent.reset_hidden()
-                    break
+                    if done[0]:
+                        next_value = torch.zeros_like(next_value)
 
-                if result.terminated:
-                    # Track wins
-                    if result.observation.jad_hp <= 0:
-                        total_wins += 1
-                        interval_wins += 1
-                    # Reset hidden state for new episode
-                    agent.reset_hidden()
-                    break
+                agent.update(next_value)
 
-            # Track episode stats
-            episode_rewards.append(episode_reward)
-            episode_lengths.append(episode_length)
+            # Update observation
+            obs = next_obs
 
-            # Logging
-            if (episode + 1) % log_interval == 0:
-                avg_reward = np.mean(episode_rewards[-log_interval:])
-                avg_length = np.mean(episode_lengths[-log_interval:])
+            # Check for episode end
+            if done[0]:
+                # Track outcome
+                if info[0].get("outcome") == "kill":
+                    total_wins += 1
+                    interval_wins += 1
 
-                # Check if this is a new best
-                is_best = avg_reward > best_avg_reward
-                if is_best:
-                    best_avg_reward = avg_reward
-                    # Save best model (overwrite previous best)
-                    save_path = checkpoint_path / "best.pt"
-                    agent.save(str(save_path))
+                # Store episode stats
+                episode_raw_rewards.append(current_episode_raw_reward)
+                episode_norm_rewards.append(current_episode_norm_reward)
+                episode_lengths.append(current_episode_length)
+                episode_count += 1
 
-                elapsed = int(time.time() - start_time)
-                elapsed_str = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
-                start_ep = episode + 2 - log_interval
-                print(
-                    f"Episodes {start_ep}-{episode + 1} | "
-                    f"Avg Reward: {avg_reward:.1f} | "
-                    f"Avg Length: {avg_length:.0f} | "
-                    f"Kills: {interval_wins}/{log_interval} | "
-                    f"Steps: {total_steps:,} | "
-                    f"Time: {elapsed_str}"
-                    f"{' [NEW BEST]' if is_best else ''}"
-                )
-                interval_wins = 0
+                # Logging
+                if episode_count % log_interval == 0:
+                    avg_raw_reward = np.mean(episode_raw_rewards[-log_interval:])
+                    avg_norm_reward = np.mean(episode_norm_rewards[-log_interval:])
+                    avg_length = np.mean(episode_lengths[-log_interval:])
+
+                    # Check if this is a new best (using raw reward for interpretability)
+                    is_best = avg_raw_reward > best_avg_reward
+                    if is_best:
+                        best_avg_reward = avg_raw_reward
+                        # Save best model and normalizer
+                        agent.save(str(checkpoint_path / "best.pt"))
+                        env.save_normalizer(str(normalizer_path))
+
+                    elapsed = int(time.time() - start_time)
+                    elapsed_str = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
+                    start_ep = episode_count + 1 - log_interval
+                    print(
+                        f"Episodes {start_ep}-{episode_count} | "
+                        f"Raw: {avg_raw_reward:.1f} | "
+                        f"Norm: {avg_norm_reward:.2f} | "
+                        f"Len: {avg_length:.0f} | "
+                        f"Kills: {interval_wins}/{log_interval} | "
+                        f"Steps: {total_steps:,} | "
+                        f"Time: {elapsed_str}"
+                    )
+                    if is_best:
+                        print(f"  [NEW BEST - saved to {checkpoint_path / 'best.pt'}]")
+                    interval_wins = 0
+
+                # Reset for next episode
+                current_episode_raw_reward = 0.0
+                current_episode_norm_reward = 0.0
+                current_episode_length = 0
+                agent.reset_hidden()
+                obs = env.reset()
 
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
@@ -230,11 +179,11 @@ def train(
     finally:
         env.close()
 
-    actual_episodes = len(episode_rewards)
+    actual_episodes = len(episode_raw_rewards)
     win_rate = (total_wins / actual_episodes * 100) if actual_episodes > 0 else 0
     print(f"\nTraining complete: {total_wins}/{actual_episodes} wins ({win_rate:.1f}%)")
-    print(f"Best avg reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
-    return agent, episode_rewards
+    print(f"Best avg raw reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
+    return agent, episode_raw_rewards
 
 
 def main():

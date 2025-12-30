@@ -8,9 +8,9 @@ import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
 
-from env import JadEnv, Observation
-from observations import obs_to_array, OBS_DIM, NORMALIZE_MASK
-from normalizer import RunningNormalizer
+from env import JadEnv, Observation, TerminationState
+from observations import obs_to_array, OBS_DIM
+from rewards import compute_reward
 
 
 MAX_EPISODE_LENGTH = 300  # Hard cap to prevent stalling
@@ -44,26 +44,6 @@ class JadGymnasiumEnv(gym.Env):
         self.current_obs: Observation | None = None
         self.episode_length = 0
 
-        # Observation normalizer (only for continuous features, like train.py)
-        n_continuous = int(np.sum(NORMALIZE_MASK))
-        self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
-        self.normalize_mask = NORMALIZE_MASK
-
-    def normalize_obs(self, obs: np.ndarray, update: bool = True) -> np.ndarray:
-        """
-        Normalize only continuous features, leaving one-hot features unchanged.
-        Matches train.py's normalization approach.
-        """
-        result = obs.copy()
-        continuous = obs[self.normalize_mask]
-
-        if update:
-            self.obs_normalizer.update(continuous)
-
-        normalized_continuous = self.obs_normalizer.normalize(continuous)
-        result[self.normalize_mask] = normalized_continuous
-        return result
-
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -71,8 +51,8 @@ class JadGymnasiumEnv(gym.Env):
         self.prev_obs = None
         self.episode_length = 0
 
+        # Return raw observation - normalization handled by SelectiveVecNormalize wrapper
         obs_array = obs_to_array(self.current_obs)
-        obs_array = self.normalize_obs(obs_array)
         return obs_array, {}
 
     def step(self, action):
@@ -84,82 +64,39 @@ class JadGymnasiumEnv(gym.Env):
         self.current_obs = result.observation
         self.episode_length += 1
 
-        # Compute reward
-        reward = self._compute_reward(
+        # Determine termination state
+        truncated = False
+        if result.terminated:
+            if self.current_obs.jad_hp <= 0:
+                termination = TerminationState.JAD_KILLED
+            else:
+                termination = TerminationState.PLAYER_DIED
+        elif self.episode_length >= MAX_EPISODE_LENGTH:
+            termination = TerminationState.TRUNCATED
+            truncated = True
+        else:
+            termination = TerminationState.ONGOING
+
+        # Compute reward (all reward logic is in compute_reward)
+        # Reward normalization is handled by SelectiveVecNormalize wrapper
+        reward = compute_reward(
             self.current_obs,
             self.prev_obs,
-            result.terminated,
+            termination,
             self.episode_length,
         )
 
-        # Check for timeout
-        truncated = False
-        if self.episode_length >= MAX_EPISODE_LENGTH and not result.terminated:
-            truncated = True
-            reward -= 100.0  # Timeout penalty
-
-        # Scale reward to stabilize training (matches train.py)
-        reward = reward / 100.0
-
+        # Return raw observation - normalization handled by SelectiveVecNormalize wrapper
         obs_array = obs_to_array(self.current_obs)
-        obs_array = self.normalize_obs(obs_array)
 
         # Build info dict with outcome for tracking
-        info = {}
-        if result.terminated or truncated:
-            if self.current_obs.jad_hp <= 0:
-                info["outcome"] = "kill"
-            else:
-                info["outcome"] = "death"
+        info = {"raw_reward": reward}
+        if termination == TerminationState.JAD_KILLED:
+            info["outcome"] = "kill"
+        elif termination in (TerminationState.PLAYER_DIED, TerminationState.TRUNCATED):
+            info["outcome"] = "death"
 
         return obs_array, reward, result.terminated, truncated, info
-
-    def _compute_reward(
-        self,
-        obs: Observation,
-        prev_obs: Observation | None,
-        terminated: bool,
-        episode_length: int,
-    ) -> float:
-        """
-        Reward function matching the original train.py implementation.
-        """
-        reward = 0.0
-
-        # Prayer switching feedback
-        if prev_obs is not None and prev_obs.jad_attack != 0:
-            if obs.active_prayer == prev_obs.jad_attack:
-                reward += 1
-            else:
-                reward -= 1
-
-        # Survival bonus
-        reward += 0.1
-
-        # Penalty for not attacking Jad
-        if not obs.player_aggro:
-            reward -= 1
-
-        if prev_obs is not None:
-            # Damage taken penalty
-            damage_taken = prev_obs.player_hp - obs.player_hp
-            if damage_taken > 0:
-                reward -= damage_taken * 0.1
-
-            # Damage dealt reward
-            damage_dealt = prev_obs.jad_hp - obs.jad_hp
-            if damage_dealt > 0:
-                reward += damage_dealt * 0.1
-
-        # Terminal rewards
-        if terminated:
-            if obs.player_hp <= 0:
-                reward -= 100.0  # Death
-            elif obs.jad_hp <= 0:
-                reward += 100.0  # Win
-                reward -= episode_length * 0.25  # Faster kills are better
-
-        return reward
 
     def close(self):
         self.env.close()
