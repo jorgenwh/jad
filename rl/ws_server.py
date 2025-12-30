@@ -2,12 +2,10 @@
 WebSocket server for browser visualization of the trained agent.
 
 Run this server, then open the browser simulation to see the agent play.
-Supports both custom .pt checkpoints and SB3 .zip checkpoints.
 
 Usage:
-    python ws_server.py                                    # Use default custom checkpoint
-    python ws_server.py --checkpoint checkpoints/best.pt   # Custom checkpoint
-    python ws_server.py --checkpoint checkpoints/best_sb3.zip  # SB3 checkpoint
+    python ws_server.py                                        # Use default checkpoint
+    python ws_server.py --checkpoint checkpoints/best_sb3.zip  # Specific checkpoint
 """
 
 import asyncio
@@ -15,6 +13,8 @@ import json
 import numpy as np
 import torch
 from websockets.asyncio.server import serve
+from sb3_contrib import RecurrentPPO
+from pathlib import Path
 
 from observations import obs_to_array, get_normalize_mask
 from vec_normalize import RunningNormalizer
@@ -52,12 +52,10 @@ def get_action_names(config: JadConfig) -> dict[int, str]:
 
 
 class AgentServer:
-    def __init__(self, checkpoint_path: str | None = None, jad_count: int = 1,
+    def __init__(self, checkpoint_path: str, jad_count: int = 1,
                  healers_per_jad: int = 3, reward_type: str = "default"):
-        self.is_sb3 = False
-        self.agent = None
-        self.model = None  # For SB3
-        self.lstm_state = None  # For SB3 LSTM state
+        self.model = None
+        self.lstm_state = None
         self.config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
         self.action_names = get_action_names(self.config)
         self.reward_type = reward_type
@@ -67,87 +65,39 @@ class AgentServer:
         self.episode_length = 0
         self.cumulative_reward = 0.0
 
-        if checkpoint_path and checkpoint_path.endswith(".zip"):
-            # SB3 checkpoint
-            self._load_sb3(checkpoint_path)
-        else:
-            # Custom checkpoint
-            self._load_custom(checkpoint_path)
+        self._load_model(checkpoint_path)
 
-    def _load_custom(self, checkpoint_path: str | None):
-        """Load custom .pt checkpoint."""
-        from agent import PPOAgent
-        from pathlib import Path
+    def _load_model(self, checkpoint_path: str):
+        """Load SB3 .zip checkpoint."""
 
-        self.agent = PPOAgent()
-        self.agent.eval_mode()
-        self.agent.reset_hidden()
+        self.model = RecurrentPPO.load(checkpoint_path, device="auto")
+        self.lstm_state = None  # Will be initialized on first prediction
+        print(f"Loaded checkpoint: {checkpoint_path}")
 
-        # Set up observation normalizer (same as SelectiveVecNormalize)
+        # Set up observation normalizer (matching SelectiveVecNormalize used in training)
         self.normalize_mask = get_normalize_mask(self.config)
         n_continuous = int(np.sum(self.normalize_mask))
         self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
 
-        if checkpoint_path:
-            try:
-                self.agent.load(checkpoint_path)
-                print(f"Loaded custom checkpoint: {checkpoint_path}")
-
-                # Load normalizer stats saved by SelectiveVecNormalize during training
-                checkpoint_dir = Path(checkpoint_path).parent
-                normalizer_path = checkpoint_dir / "normalizer.npz"
-                if normalizer_path.exists():
-                    data = np.load(normalizer_path)
-                    # Only need obs normalizer for inference (rewards not used)
-                    self.obs_normalizer.load_state_dict({
-                        "mean": data["obs_mean"],
-                        "var": data["obs_var"],
-                        "count": int(data["obs_count"]),
-                    })
-                    print(f"Loaded normalizer stats: {normalizer_path}")
-                else:
-                    print(f"Warning: No normalizer stats found at {normalizer_path}")
-                    print("  Observations will not be normalized correctly!")
-            except FileNotFoundError:
-                print(f"Checkpoint not found: {checkpoint_path}")
-                print("Using untrained agent")
-        else:
-            print("No checkpoint specified, using untrained agent")
-
-    def _load_sb3(self, checkpoint_path: str):
-        """Load SB3 .zip checkpoint."""
-        from sb3_contrib import RecurrentPPO
-        from pathlib import Path
-
-        self.is_sb3 = True
-        try:
-            self.model = RecurrentPPO.load(checkpoint_path, device="auto")
-            self.lstm_state = None  # Will be initialized on first prediction
-            print(f"Loaded SB3 checkpoint: {checkpoint_path}")
-
-            # Set up observation normalizer (matching SelectiveVecNormalize used in training)
-            self.normalize_mask = get_normalize_mask(self.config)
-            n_continuous = int(np.sum(self.normalize_mask))
-            self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
-
-            # Load normalizer stats saved by SelectiveVecNormalize during training
-            checkpoint_dir = Path(checkpoint_path).parent
+        # Load normalizer stats saved by SelectiveVecNormalize during training
+        checkpoint_dir = Path(checkpoint_path).parent
+        # Try jad-count specific normalizer first, then generic
+        jad_count = self.config.jad_count
+        normalizer_path = checkpoint_dir / f"normalizer_sb3_{jad_count}jad.npz"
+        if not normalizer_path.exists():
             normalizer_path = checkpoint_dir / "normalizer_sb3.npz"
-            if normalizer_path.exists():
-                data = np.load(normalizer_path)
-                # Only need obs normalizer for inference (rewards not used)
-                self.obs_normalizer.load_state_dict({
-                    "mean": data["obs_mean"],
-                    "var": data["obs_var"],
-                    "count": int(data["obs_count"]),
-                })
-                print(f"Loaded normalizer stats: {normalizer_path}")
-            else:
-                print(f"Warning: No normalizer stats found at {normalizer_path}")
-                print("  Observations will not be normalized correctly!")
-        except FileNotFoundError:
-            print(f"Checkpoint not found: {checkpoint_path}")
-            raise
+
+        if normalizer_path.exists():
+            data = np.load(normalizer_path)
+            self.obs_normalizer.load_state_dict({
+                "mean": data["obs_mean"],
+                "var": data["obs_var"],
+                "count": int(data["obs_count"]),
+            })
+            print(f"Loaded normalizer stats: {normalizer_path}")
+        else:
+            print(f"Warning: No normalizer stats found")
+            print("  Observations will not be normalized correctly!")
 
     def _parse_observation(self, obs_dict: dict) -> Observation:
         """Parse observation dict into Observation dataclass."""
@@ -241,56 +191,38 @@ class AgentServer:
         # Store processed array for debugging
         processed_obs = obs_array.tolist()
 
-        if self.is_sb3:
-            # SB3 model - use predict with LSTM state
-            try:
-                action, self.lstm_state = self.model.predict(
-                    obs_array,
-                    state=self.lstm_state,
-                    deterministic=True,
+        # Get action from model
+        action, self.lstm_state = self.model.predict(
+            obs_array,
+            state=self.lstm_state,
+            deterministic=True,
+        )
+
+        # Try to get value estimate from the policy
+        value = 0.0
+        try:
+            if self.lstm_state is not None:
+                obs_tensor = torch.as_tensor(obs_array).float().unsqueeze(0).to(self.model.device)
+                # LSTM states from predict: (hidden_list, cell_list)
+                # Each list contains arrays of shape (n_envs, hidden_size)
+                # predict_values expects (hidden, cell) each with shape (n_layers, n_envs, hidden_size)
+                hidden = torch.as_tensor(self.lstm_state[0][0]).unsqueeze(0).to(self.model.device)
+                cell = torch.as_tensor(self.lstm_state[1][0]).unsqueeze(0).to(self.model.device)
+                lstm_states = (hidden, cell)
+                episode_starts = torch.as_tensor([False]).float().to(self.model.device)
+                value = self.model.policy.predict_values(
+                    obs_tensor, lstm_states, episode_starts
                 )
-            except Exception as e:
-                print(f"Predict failed: {e}")
-                print(f"  obs_array shape: {obs_array.shape}")
-                print(f"  lstm_state: {type(self.lstm_state)}")
-                if self.lstm_state is not None:
-                    print(f"  lstm_state[0]: {[x.shape for x in self.lstm_state[0]]}")
-                    print(f"  lstm_state[1]: {[x.shape for x in self.lstm_state[1]]}")
-                raise
-            # Try to get value estimate from the policy
-            value = 0.0
-            try:
-                if self.lstm_state is not None:
-                    obs_tensor = torch.as_tensor(obs_array).float().unsqueeze(0).to(self.model.device)
-                    # LSTM states from predict: (hidden_list, cell_list)
-                    # Each list contains arrays of shape (n_envs, hidden_size)
-                    # predict_values expects (hidden, cell) each with shape (n_layers, n_envs, hidden_size)
-                    hidden = torch.as_tensor(self.lstm_state[0][0]).unsqueeze(0).to(self.model.device)
-                    cell = torch.as_tensor(self.lstm_state[1][0]).unsqueeze(0).to(self.model.device)
-                    lstm_states = (hidden, cell)
-                    episode_starts = torch.as_tensor([False]).float().to(self.model.device)
-                    value = self.model.policy.predict_values(
-                        obs_tensor, lstm_states, episode_starts
-                    )
-                    value = float(value.item())
-            except Exception as e:
-                # Value extraction failed, log and keep default 0.0
-                print(f"Value extraction failed: {e}")
-                print(f"  {type(e).__name__}: {e}")
-            return int(action), value, processed_obs, obs
-        else:
-            # Custom model - use deterministic action selection
-            with torch.no_grad():
-                action, _, value = self.agent.select_action(obs_array, deterministic=True)
-            return action, float(value.item()), processed_obs, obs
+                value = float(value.item())
+        except Exception as e:
+            # Value extraction failed, keep default 0.0
+            pass
+
+        return int(action), value, processed_obs, obs
 
     def reset_state(self):
         """Reset LSTM state and reward tracking for new episode."""
-        if self.is_sb3:
-            self.lstm_state = None
-        else:
-            self.agent.reset_hidden()
-        # Reset reward tracking
+        self.lstm_state = None
         self.prev_obs = None
         self.episode_length = 0
         self.cumulative_reward = 0.0
@@ -406,8 +338,8 @@ async def main():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/best.pt",
-        help="Path to checkpoint (.pt for custom, .zip for SB3)",
+        default="checkpoints/best_sb3_1jad.zip",
+        help="Path to SB3 checkpoint (.zip)",
     )
     parser.add_argument(
         "--port",
