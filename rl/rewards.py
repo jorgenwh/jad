@@ -33,8 +33,9 @@ def compute_reward(
         else:
             reward -= 1
 
-    # Survival reward
-    reward += 0.1
+    # Penalty for not being in combat (encourages attacking)
+    if not obs.player_aggro:
+        reward -= 0.5
 
     # Per-step rewards (only if we have previous observation to compare)
     if prev_obs is not None:
@@ -43,17 +44,19 @@ def compute_reward(
         if damage_taken > 0:
             reward -= damage_taken * 0.1
 
-        # Damage dealt reward
+        # Damage dealt reward (increased to encourage attacking)
         damage_dealt = prev_obs.jad_hp - obs.jad_hp
         if damage_dealt > 0:
-            reward += damage_dealt * 0.1
+            reward += damage_dealt * 0.2
 
     # Terminal rewards
     match termination:
         case TerminationState.JAD_KILLED:
             reward += 100.0
-            reward -= episode_length * 0.25  # Faster kills are better
-        case TerminationState.PLAYER_DIED | TerminationState.TRUNCATED:
-            reward -= 100.0  # Lose penalty
+            reward -= episode_length * 0.1  # Faster kills are better
+        case TerminationState.PLAYER_DIED:
+            reward -= 50.0  # Dying while trying is acceptable
+        case TerminationState.TRUNCATED:
+            reward -= 150.0  # Timeout is worse than dying - discourages passivity
 
     return reward

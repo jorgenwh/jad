@@ -149,11 +149,11 @@ export class AgentController {
     const jadDead = this.jad.dying > 0 || this.jad.currentStats.hitpoint <= 0;
 
     if (playerDead) {
-      // Show final state with death penalty (matches rewards.py: -100)
+      // Show final state with death penalty (matches rewards.py: -50)
       this.episodeTerminated = true;
       const obs = this.getObservation();
       this.updateObservationDisplay(obs);
-      this.cumulativeReward += -100;
+      this.cumulativeReward += -50;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
       const actionEl = document.getElementById('agent_action');
@@ -163,11 +163,11 @@ export class AgentController {
       return;
     }
     if (jadDead) {
-      // Show final state with kill bonus (matches rewards.py: +100 - episode_length * 0.25)
+      // Show final state with kill bonus (matches rewards.py: +100 - episode_length * 0.1)
       this.episodeTerminated = true;
       const obs = this.getObservation();
       this.updateObservationDisplay(obs);
-      const killReward = 100 - this.episodeLength * 0.25;
+      const killReward = 100 - this.episodeLength * 0.1;
       this.cumulativeReward += killReward;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
@@ -387,13 +387,15 @@ export class AgentController {
       }
     }
 
-    // Survival reward
-    reward += 0.1;
+    // Penalty for not being in combat (encourages attacking)
+    if (!obs.player_aggro) {
+      reward -= 0.5;
+    }
 
-    // Damage dealt reward (damage_dealt * 0.1)
+    // Damage dealt reward (damage_dealt * 0.2)
     const jadDamage = this.prevJadHp - obs.jad_hp;
     if (jadDamage > 0) {
-      reward += jadDamage * 0.1;
+      reward += jadDamage * 0.2;
     }
 
     // Damage taken penalty (damage_taken * 0.1)
