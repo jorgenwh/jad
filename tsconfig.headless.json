@@ -13,6 +13,6 @@
     "declaration": true,
     "moduleResolution": "node"
   },
-  "include": ["src/headless/**/*", "src/jad.ts", "src/jad-region.ts", "src/loadout.ts"],
+  "include": ["src/headless/**/*", "src/jad.ts", "src/jad-region.ts", "src/loadout.ts", "src/healer.ts", "src/assets.d.ts"],
   "exclude": ["node_modules", "dist", "dist-headless", "src/index.ts"]
 }

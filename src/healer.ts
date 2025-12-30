@@ -13,7 +13,10 @@ import {
   UnitBonuses,
   UnitTypes,
   EntityNames,
+  ImageLoader,
 } from 'osrs-sdk';
+
+import HurKotImage from './assets/images/Yt-HurKot.png';
 
 /**
  * Healing weapon used by YtHurKot to heal Jad.
@@ -129,6 +132,10 @@ export class YtHurKot extends Mob {
 
   get size() {
     return 1;
+  }
+
+  get image() {
+    return HurKotImage;
   }
 
   get color() {
