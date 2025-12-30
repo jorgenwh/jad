@@ -227,11 +227,11 @@ export class AgentController {
     const jadDead = this.jad.dying > 0 || this.jad.currentStats.hitpoint <= 0;
 
     if (playerDead) {
-      // Show final state with death penalty (matches rewards.py: -50)
+      // Show final state with death penalty (matches rewards.py: -200)
       this.episodeTerminated = true;
       const obs = this.getObservation();
       this.updateObservationDisplay(obs);
-      this.cumulativeReward += -50;
+      this.cumulativeReward += -200;
       const rewardEl = document.getElementById('agent_reward');
       if (rewardEl) rewardEl.innerText = this.cumulativeReward.toFixed(1);
       const stepsEl = document.getElementById('agent_steps');
@@ -543,12 +543,12 @@ export class AgentController {
     const HEALER_AGGRO_JAD = 1;
     const HEALER_AGGRO_PLAYER = 2;
 
-    // Prayer switching feedback
+    // Prayer switching feedback - heavily weighted because wrong prayer = death
     if (this.prevJadAttack !== 0) {
       if (obs.active_prayer === this.prevJadAttack) {
-        reward += 1;
+        reward += 2;
       } else {
-        reward -= 1;
+        reward -= 10;  // Wrong prayer is catastrophic
       }
     }
 

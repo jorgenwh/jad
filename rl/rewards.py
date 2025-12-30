@@ -37,12 +37,12 @@ def compute_reward(
     """
     reward = 0.0
 
-    # Prayer switching feedback
+    # Prayer switching feedback - heavily weighted because wrong prayer = death
     if prev_obs is not None and prev_obs.jad_attack != 0:
         if obs.active_prayer == prev_obs.jad_attack:
-            reward += 1
+            reward += 2
         else:
-            reward -= 1
+            reward -= 10  # Wrong prayer is catastrophic - must be avoided at all costs
 
     # Penalty for not being in combat (encourages attacking)
     # player_aggro is now an int: 0=none, 1=jad, 2-4=healer
@@ -77,7 +77,7 @@ def compute_reward(
             reward += 100.0
             reward -= episode_length * 0.1  # Faster kills are better
         case TerminationState.PLAYER_DIED:
-            reward -= 50.0  # Dying while trying is acceptable
+            reward -= 200.0  # Death is catastrophic - agent must learn to NEVER die
         case TerminationState.TRUNCATED:
             reward -= 150.0  # Timeout is worse than dying - discourages passivity
 
