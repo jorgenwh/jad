@@ -36,14 +36,14 @@ def compute_reward(
         # Damage dealt reward
         damage_dealt = prev_obs.jad_hp - obs.jad_hp
         if damage_dealt > 0:
-            reward += damage_dealt * 1
+            reward += damage_dealt * 0.75
 
     # Terminal rewards
     match termination:
         case TerminationState.JAD_KILLED:
-            reward += 150.0
-            reward -= episode_length * 0.5  # Faster kills are better
+            reward += 100.0
+            reward -= episode_length * 1.5  # Faster kills are better
         case TerminationState.PLAYER_DIED | TerminationState.TRUNCATED:
-            reward -= 150.0  # Lose penalty
+            reward -= 100.0  # Lose penalty
 
     return reward
