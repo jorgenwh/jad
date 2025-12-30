@@ -30,6 +30,7 @@ class Observation:
     sara_brew_doses: int
     piety_active: bool
     player_aggro: bool  # Whether player is attacking Jad
+    healer_count: int  # Number of alive healers (0-3)
 
 
 @dataclass
@@ -97,6 +98,7 @@ class JadEnv:
             sara_brew_doses=obs.get("sara_brew_doses", 0),
             piety_active=obs.get("piety_active", False),
             player_aggro=obs.get("player_aggro", False),
+            healer_count=obs.get("healer_count", 0),
         )
 
     def reset(self) -> Observation:

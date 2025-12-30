@@ -6,8 +6,8 @@ import numpy as np
 from env import Observation
 
 # Observation dimensions
-# 3 continuous + 4 active_prayer + 4 jad_attack + 5 restore + 5 super_combat + 5 sara_brew + 1 piety + 1 aggro = 28
-OBS_DIM = 28
+# 3 continuous + 4 active_prayer + 4 jad_attack + 5 restore + 5 super_combat + 5 sara_brew + 1 piety + 1 aggro + 4 healer_count = 32
+OBS_DIM = 32
 
 # Indices for each feature in the observation array
 # Continuous features (will be normalized)
@@ -23,6 +23,7 @@ IDX_SUPER_COMBAT_DOSES_START = 16  # 5 values: 0, 1, 2, 3, 4
 IDX_SARA_BREW_DOSES_START = 21  # 5 values: 0, 1, 2, 3, 4
 IDX_PIETY_ACTIVE = 26         # Binary: 0 or 1
 IDX_PLAYER_AGGRO = 27         # Binary: 0 or 1
+IDX_HEALER_COUNT_START = 28   # 4 values: 0, 1, 2, 3 healers
 
 # Masks for normalization (True = normalize, False = don't normalize)
 NORMALIZE_MASK = np.array([
@@ -36,6 +37,7 @@ NORMALIZE_MASK = np.array([
     False, False, False, False, False,  # sara_brew_doses (one-hot, 5 values)
     False,  # piety_active (binary)
     False,  # player_aggro (binary)
+    False, False, False, False,  # healer_count (one-hot, 4 values: 0, 1, 2, 3)
 ], dtype=bool)
 
 
@@ -52,7 +54,7 @@ def obs_to_array(obs: Observation) -> np.ndarray:
     Convert Observation dataclass to numpy array with one-hot encoding.
 
     Returns:
-        Array of shape (28,):
+        Array of shape (32,):
         - [0]: player_hp (continuous)
         - [1]: player_prayer (continuous)
         - [2]: jad_hp (continuous)
@@ -63,6 +65,7 @@ def obs_to_array(obs: Observation) -> np.ndarray:
         - [21:26]: sara_brew_doses (one-hot: 0, 1, 2, 3, 4)
         - [26]: piety_active (binary: 0 or 1)
         - [27]: player_aggro (binary: 0 or 1)
+        - [28:32]: healer_count (one-hot: 0, 1, 2, 3)
     """
     return np.concatenate([
         # Continuous features
@@ -76,4 +79,6 @@ def obs_to_array(obs: Observation) -> np.ndarray:
         # Binary features
         np.array([float(obs.piety_active)], dtype=np.float32),
         np.array([float(obs.player_aggro)], dtype=np.float32),
+        # Healer count (one-hot: 0, 1, 2, 3)
+        one_hot(min(obs.healer_count, 3), 4),
     ])

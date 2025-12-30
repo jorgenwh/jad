@@ -32,6 +32,8 @@ export interface JadObservation {
   super_combat_doses: number;
   sara_brew_doses: number;
   piety_active: boolean;
+  player_aggro: boolean;
+  healer_count: number; // Number of alive healers (0-3)
 }
 
 export interface StepResult {
@@ -277,6 +279,12 @@ export class HeadlessEnv {
       }
     }
 
+    // Check if player is attacking Jad
+    const playerAggro = this.player.aggro === this.jad;
+
+    // Get healer count from region
+    const healerCount = (this.region as JadRegion).healerCount;
+
     return {
       player_hp: this.player?.currentStats?.hitpoint ?? 0,
       player_prayer: this.player?.currentStats?.prayer ?? 0,
@@ -287,6 +295,8 @@ export class HeadlessEnv {
       super_combat_doses: superCombatDoses,
       sara_brew_doses: saraBrewDoses,
       piety_active: pietyActive,
+      player_aggro: playerAggro,
+      healer_count: healerCount,
     };
   }
 

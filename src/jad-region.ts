@@ -3,6 +3,7 @@ import { InvisibleMovementBlocker } from 'osrs-sdk';
 
 import { getRangedLoadout, getMeleeLoadout } from './loadout';
 import { Jad } from './jad';
+import { YtHurKot } from './healer';
 
 export class JadRegion extends Region {
   getName(): string {
@@ -24,6 +25,20 @@ export class JadRegion extends Region {
       throw new Error('Jad not initialized');
     }
     return this._jad;
+  }
+
+  /**
+   * Get all alive healers in the region.
+   */
+  get healers(): YtHurKot[] {
+    return this.mobs.filter((mob): mob is YtHurKot => mob instanceof YtHurKot && !mob.isDying());
+  }
+
+  /**
+   * Get the count of alive healers.
+   */
+  get healerCount(): number {
+    return this.healers.length;
   }
 
   initialiseRegion(): { player: Player } {

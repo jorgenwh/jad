@@ -2,6 +2,7 @@ import {
   Assets,
   AttackBonuses,
   AttackIndicators,
+  Collision,
   DelayedAction,
   EntityNames,
   GLTFModel,
@@ -20,6 +21,8 @@ import {
   UnitBonuses,
   UnitOptions,
 } from 'osrs-sdk';
+
+import { YtHurKot } from './healer';
 
 const JadModel = Assets.getAssetUrl("models/7700_33012.glb");
 const JadRangeProjectileModel = Assets.getAssetUrl("models/jad_range.glb");
@@ -93,6 +96,9 @@ class JadRangeWeapon extends RangedWeapon {
 }
 
 export class Jad extends Mob {
+  private hasProccedHealers = false;
+  private healerCount = 3;
+
   constructor(region: Region, location: Location, options?: UnitOptions) {
     super(region, location, options);
     this.autoRetaliate = true;
@@ -194,6 +200,47 @@ export class Jad extends Mob {
     super.attack();
     this.attackFeedback = AttackIndicators.NONE;
     return true;
+  }
+
+  /**
+   * Called when Jad takes damage. Spawns healers when HP drops below 50%.
+   */
+  damageTaken() {
+    if (this.currentStats.hitpoint < this.stats.hitpoint / 2) {
+      if (!this.hasProccedHealers) {
+        this.hasProccedHealers = true;
+
+        for (let i = 0; i < this.healerCount; i++) {
+          // Find a valid spawn position around Jad
+          let xOff = 0;
+          let yOff = 0;
+          let attempts = 0;
+          const maxAttempts = 50;
+
+          do {
+            xOff = Math.floor(Random.get() * 11) - 5;
+            yOff = Math.floor(Random.get() * 11) - 5 - this.size;
+            attempts++;
+          } while (
+            attempts < maxAttempts &&
+            Collision.collidesWithAnyMobs(
+              this.region,
+              this.location.x + xOff,
+              this.location.y + yOff,
+              1,
+              this
+            )
+          );
+
+          const healer = new YtHurKot(
+            this.region,
+            { x: this.location.x + xOff, y: this.location.y + yOff },
+            { aggro: this },
+          );
+          this.region.addMob(healer);
+        }
+      }
+    }
   }
 
   create3dModel() {

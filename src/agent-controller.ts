@@ -5,6 +5,7 @@
 
 import { Player, Potion } from 'osrs-sdk';
 import { Jad } from './jad';
+import { JadRegion } from './jad-region';
 
 // Action enum (must match Python)
 enum JadAction {
@@ -30,6 +31,7 @@ interface JadObservation {
   sara_brew_doses: number;
   piety_active: boolean;
   player_aggro: boolean;
+  healer_count: number; // 0-3
 }
 
 // Prayer names for display
@@ -350,6 +352,9 @@ export class AgentController {
     // Check if player is attacking Jad
     const playerAggro = this.player.aggro === this.jad;
 
+    // Get healer count from region
+    const healerCount = (this.player.region as JadRegion).healerCount;
+
     return {
       player_hp: this.player?.currentStats?.hitpoint ?? 0,
       player_prayer: this.player?.currentStats?.prayer ?? 0,
@@ -361,6 +366,7 @@ export class AgentController {
       sara_brew_doses: saraBrewDoses,
       piety_active: pietyActive,
       player_aggro: playerAggro,
+      healer_count: healerCount,
     };
   }
 
@@ -431,6 +437,7 @@ export class AgentController {
     setEl('obs_aggro', obs.player_aggro ? 'Yes' : 'No');
     setEl('obs_jad_hp', String(obs.jad_hp));
     setEl('obs_jad_attack', ATTACK_NAMES[obs.jad_attack]);
+    setEl('obs_healer_count', String(obs.healer_count));
     setEl('obs_restore', String(obs.restore_doses));
     setEl('obs_super_combat', String(obs.super_combat_doses));
     setEl('obs_sara_brew', String(obs.sara_brew_doses));
