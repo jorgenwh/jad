@@ -1,10 +1,21 @@
 import { JadRegion } from './jad-region';
 import { AgentController } from './agent-controller';
 import { Settings, World, Trainer, Viewport, ImageLoader, MapController, Assets } from 'osrs-sdk';
+import { JadConfig, DEFAULT_CONFIG } from './config';
 
 Settings.readFromStorage();
 
-const region = new JadRegion();
+// Parse config from URL params (e.g., ?jads=3&healers=3)
+const urlParams = new URLSearchParams(window.location.search);
+const jadCount = parseInt(urlParams.get('jads') || '1', 10);
+const healersPerJad = parseInt(urlParams.get('healers') || '3', 10);
+const config: JadConfig = {
+  jadCount: Math.max(1, Math.min(6, jadCount)),
+  healersPerJad: Math.max(0, Math.min(5, healersPerJad)),
+};
+console.log(`Config: ${config.jadCount} Jad(s), ${config.healersPerJad} healers per Jad`);
+
+const region = new JadRegion(config);
 const world = new World();
 region.world = world;
 world.addRegion(region);
@@ -20,12 +31,11 @@ Trainer.setPlayer(player);
 let agentController: AgentController | null = null;
 
 // Check URL params for agent mode
-const urlParams = new URLSearchParams(window.location.search);
 const agentMode = urlParams.get('agent') === 'true';
 
 if (agentMode) {
   console.log('Agent mode enabled - will connect to WebSocket server');
-  agentController = new AgentController(player, region.jad);
+  agentController = new AgentController(player, region);
 }
 
 let imagesReady = false;

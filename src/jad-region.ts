@@ -4,6 +4,7 @@ import { InvisibleMovementBlocker } from 'osrs-sdk';
 import { getRangedLoadout, getMeleeLoadout } from './loadout';
 import { Jad } from './jad';
 import { YtHurKot } from './healer';
+import { JadConfig, DEFAULT_CONFIG } from './config';
 
 // Healer aggro state for observation
 export enum HealerAggro {
@@ -12,61 +13,179 @@ export enum HealerAggro {
   PLAYER = 2,
 }
 
+// Region dimensions - sized for 6 Jads in a circle around player
+const REGION_WIDTH = 27;
+const REGION_HEIGHT = 27;
+const PLAYER_SPAWN = { x: 13, y: 13 };  // Center of region
+
+// Attack speeds: 8 ticks for single Jad, 9 ticks for multi-Jad (like InfernoTrainer)
+const SINGLE_JAD_ATTACK_SPEED = 8;
+const MULTI_JAD_ATTACK_SPEED = 9;
+
+// Hardcoded spawn positions for 1-6 Jads (relative to 27x27 region with player at 13,13)
+const JAD_SPAWN_POSITIONS: { x: number; y: number }[][] = [
+  // 1 Jad
+  [
+    { x: 11, y: 22 },
+  ],
+  // 2 Jads
+  [
+    { x: 7, y: 22 },
+    { x: 15, y: 22 },
+  ],
+  // 3 Jads
+  [
+    { x: 11, y: 22 },
+    { x: 18, y: 15 },
+    { x: 4, y: 15 },
+  ],
+  // 4 Jads
+  [
+    { x: 11, y: 22 },
+    { x: 18, y: 15 },
+    { x: 4, y: 15 },
+    { x: 11, y: 8 },
+  ],
+  // 5 Jads
+  [
+    { x: 7, y: 22 },
+    { x: 15, y: 22 },
+    { x: 18, y: 15 },
+    { x: 4, y: 15 },
+    { x: 11, y: 8 },
+  ],
+  // 6 Jads
+  [
+    { x: 7, y: 22 },
+    { x: 15, y: 22 },
+    { x: 18, y: 15 },
+    { x: 4, y: 15 },
+    { x: 7, y: 8 },
+    { x: 15, y: 8 },
+  ],
+];
+
+/**
+ * Get attack speed based on Jad count.
+ * Single Jad uses 8 ticks, multi-Jad uses 9 ticks (like InfernoTrainer).
+ */
+function getAttackSpeed(jadCount: number): number {
+  return jadCount === 1 ? SINGLE_JAD_ATTACK_SPEED : MULTI_JAD_ATTACK_SPEED;
+}
+
+/**
+ * Calculate attack offset for each Jad to stagger attacks.
+ * Evenly distributes first attacks across the attack cycle.
+ */
+function getAttackOffset(jadIndex: number, jadCount: number): number {
+  const attackSpeed = getAttackSpeed(jadCount);
+  // Stagger attacks evenly across the attack speed window
+  // E.g., for 3 Jads with attack speed 9: offsets of 1, 4, 7 (like InfernoTrainer)
+  return 1 + Math.floor((jadIndex * attackSpeed) / jadCount);
+}
+
+// Healer array type (3 healers per Jad)
+type HealerTuple = [YtHurKot | null, YtHurKot | null, YtHurKot | null];
+
 export class JadRegion extends Region {
+  private config: JadConfig;
+  private _jads: Jad[] = [];
+
+  // Per-Jad healer tracking: Map<jadIndex, [healer0, healer1, healer2]>
+  private _healers: Map<number, HealerTuple> = new Map();
+  private _healersSpawnedPerJad: Map<number, boolean> = new Map();
+
+  constructor(config: JadConfig = DEFAULT_CONFIG) {
+    super();
+    this.config = config;
+  }
+
   getName(): string {
     return 'Jad';
   }
 
   get width(): number {
-    return 20;
+    return REGION_WIDTH;
   }
 
   get height(): number {
-    return 20;
+    return REGION_HEIGHT;
   }
 
-  private _jad: Jad | null = null;
+  get jadCount(): number {
+    return this.config.jadCount;
+  }
 
-  // Fixed-size healer tracking array - indices are stable for the episode
-  private _healers: [YtHurKot | null, YtHurKot | null, YtHurKot | null] = [null, null, null];
-  private _healersSpawned = false;
+  get healersPerJad(): number {
+    return this.config.healersPerJad;
+  }
 
+  /**
+   * Get Jad by index (0-based).
+   */
+  getJad(index: number): Jad | null {
+    if (index < 0 || index >= this._jads.length) return null;
+    const jad = this._jads[index];
+    // Check both isDying and HP to handle timing gap between HP=0 and death animation
+    if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) return null;
+    return jad;
+  }
+
+  /**
+   * Get the first (primary) Jad - for backwards compatibility.
+   */
   get jad(): Jad {
-    if (!this._jad) {
+    if (this._jads.length === 0) {
       throw new Error('Jad not initialized');
     }
-    return this._jad;
+    return this._jads[0];
   }
 
   /**
-   * Register a healer at a specific index (0, 1, or 2).
+   * Get all alive Jads.
+   */
+  get jads(): Jad[] {
+    return this._jads.filter((j) => !j.isDying());
+  }
+
+  /**
+   * Register a healer at a specific Jad and healer index.
    * Called by Jad when spawning healers to maintain stable indices.
    */
-  registerHealer(index: number, healer: YtHurKot): void {
-    if (index >= 0 && index < 3) {
-      this._healers[index] = healer;
-      this._healersSpawned = true;
+  registerHealer(jadIndex: number, healerIndex: number, healer: YtHurKot): void {
+    if (jadIndex < 0 || jadIndex >= this.config.jadCount) return;
+    if (healerIndex < 0 || healerIndex >= this.config.healersPerJad) return;
+
+    let healerTuple = this._healers.get(jadIndex);
+    if (!healerTuple) {
+      healerTuple = [null, null, null];
+      this._healers.set(jadIndex, healerTuple);
     }
+    healerTuple[healerIndex] = healer;
+    this._healersSpawnedPerJad.set(jadIndex, true);
   }
 
   /**
-   * Get healer at specific index (0, 1, or 2).
+   * Get healer at specific Jad and healer index.
    * Returns null if not spawned or dead.
    */
-  getHealer(index: number): YtHurKot | null {
-    if (index < 0 || index >= 3) return null;
-    const healer = this._healers[index];
-    // Return null if healer is dead/dying
-    if (healer && healer.isDying()) return null;
+  getHealer(jadIndex: number, healerIndex: number): YtHurKot | null {
+    const healerTuple = this._healers.get(jadIndex);
+    if (!healerTuple) return null;
+    if (healerIndex < 0 || healerIndex >= 3) return null;
+
+    const healer = healerTuple[healerIndex];
+    // Check both isDying and HP to handle timing gap between HP=0 and death animation
+    if (healer && (healer.isDying() || healer.currentStats.hitpoint <= 0)) return null;
     return healer;
   }
 
   /**
    * Get healer aggro state for observation.
    */
-  getHealerAggro(index: number): HealerAggro {
-    const healer = this._healers[index];
-    if (!healer || healer.isDying()) return HealerAggro.NOT_PRESENT;
+  getHealerAggro(jadIndex: number, healerIndex: number): HealerAggro {
+    const healer = this.getHealer(jadIndex, healerIndex);
+    if (!healer) return HealerAggro.NOT_PRESENT;
 
     const aggro = healer.aggro;
     if (aggro && aggro.type === UnitTypes.PLAYER) {
@@ -76,17 +195,35 @@ export class JadRegion extends Region {
   }
 
   /**
-   * Whether healers have spawned this episode.
+   * Whether healers have spawned for a specific Jad.
+   */
+  hasHealersSpawned(jadIndex: number): boolean {
+    return this._healersSpawnedPerJad.get(jadIndex) ?? false;
+  }
+
+  /**
+   * Whether any healers have spawned this episode.
    */
   get healersSpawned(): boolean {
-    return this._healersSpawned;
+    for (const [, spawned] of this._healersSpawnedPerJad) {
+      if (spawned) return true;
+    }
+    return false;
   }
 
   /**
    * Get all alive healers in the region (for backwards compatibility).
    */
   get healers(): YtHurKot[] {
-    return this._healers.filter((h): h is YtHurKot => h !== null && !h.isDying());
+    const result: YtHurKot[] = [];
+    for (const [, healerTuple] of this._healers) {
+      for (const healer of healerTuple) {
+        if (healer && !healer.isDying()) {
+          result.push(healer);
+        }
+      }
+    }
+    return result;
   }
 
   /**
@@ -97,15 +234,30 @@ export class JadRegion extends Region {
   }
 
   initialiseRegion(): { player: Player } {
-    const player = new Player(this, { x: 10, y: 5 });
+    // Spawn player in center of region
+    const player = new Player(this, PLAYER_SPAWN);
     this.addPlayer(player);
 
-    player.setUnitOptions(getMeleeLoadout());
+    // Use ranged loadout
+    player.setUnitOptions(getRangedLoadout());
 
     this.addBoundaryBlockers();
 
-    this._jad = new Jad(this, { x: 8, y: 15 }, { aggro: player });
-    this.addMob(this._jad);
+    // Spawn Jads around the player with staggered attack timing
+    const spawnPositions = JAD_SPAWN_POSITIONS[this.config.jadCount - 1] || JAD_SPAWN_POSITIONS[0];
+    const attackSpeed = getAttackSpeed(this.config.jadCount);
+
+    for (let i = 0; i < this.config.jadCount; i++) {
+      const pos = spawnPositions[i];
+      // Use cooldown to set initial attack delay for staggered attacks
+      const attackOffset = getAttackOffset(i, this.config.jadCount);
+      const jad = new Jad(this, pos, i, this.config.healersPerJad, attackSpeed, {
+        aggro: player,
+        cooldown: attackOffset,  // Initial attackDelay offset
+      });
+      this._jads.push(jad);
+      this.addMob(jad);
+    }
 
     return { player };
   }

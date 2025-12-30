@@ -1,83 +1,88 @@
 /**
  * Headless environment wrapper for RL training.
+ * Supports 1-6 Jads with per-Jad healers.
  */
 
 import { World, Region, Player, Potion, Settings, Trainer } from 'osrs-sdk';
 import { Jad } from '../jad';
 import { JadRegion, HealerAggro } from '../jad-region';
 import { YtHurKot } from '../healer';
+import { JadConfig, DEFAULT_CONFIG, getActionCount } from '../config';
 
 // Initialize settings from storage (uses mock localStorage)
 Settings.readFromStorage();
 
-// Action enum (12 discrete actions)
-export enum JadAction {
-  DO_NOTHING = 0,
-  AGGRO_JAD = 1,
-  AGGRO_HEALER_1 = 2,
-  AGGRO_HEALER_2 = 3,
-  AGGRO_HEALER_3 = 4,
-  TOGGLE_PROTECT_MELEE = 5,
-  TOGGLE_PROTECT_MISSILES = 6,
-  TOGGLE_PROTECT_MAGIC = 7,
-  TOGGLE_PIETY = 8,
-  DRINK_SUPER_COMBAT = 9,
-  DRINK_SUPER_RESTORE = 10,
-  DRINK_SARA_BREW = 11,
+/**
+ * Get action count for a given configuration.
+ * Actions: DO_NOTHING + N*AGGRO_JAD + N*3*AGGRO_HEALER + 7 prayers/potions
+ */
+export { getActionCount };
+
+/**
+ * Action structure for N Jads:
+ * - 0: DO_NOTHING
+ * - 1..N: AGGRO_JAD_1 through AGGRO_JAD_N
+ * - N+1..N+3N: AGGRO_HEALER (encoded as jadIndex * healersPerJad + healerIndex)
+ * - N+3N+1: TOGGLE_PROTECT_MELEE
+ * - N+3N+2: TOGGLE_PROTECT_MISSILES
+ * - N+3N+3: TOGGLE_PROTECT_MAGIC
+ * - N+3N+4: TOGGLE_RIGOUR
+ * - N+3N+5: DRINK_BASTION
+ * - N+3N+6: DRINK_SUPER_RESTORE
+ * - N+3N+7: DRINK_SARA_BREW
+ */
+
+// Single Jad state in observation
+export interface JadState {
+  hp: number;
+  attack: number;  // 0=none, 1=mage, 2=range, 3=melee
+  x: number;
+  y: number;
+  alive: boolean;
 }
 
-// Player aggro target for observation
-export enum PlayerAggro {
-  NONE = 0,
-  JAD = 1,
-  HEALER_1 = 2,
-  HEALER_2 = 3,
-  HEALER_3 = 4,
+// Single healer state in observation
+export interface HealerState {
+  hp: number;
+  x: number;
+  y: number;
+  aggro: number;  // HealerAggro enum: 0=not_present, 1=jad, 2=player
 }
 
 export interface JadObservation {
+  // Config
+  jad_count: number;
+  healers_per_jad: number;
+
   // Player state
   player_hp: number;
   player_prayer: number;
-  player_attack: number;    // Current attack stat (1-118)
-  player_strength: number;  // Current strength stat (1-118)
+  player_ranged: number;    // Current ranged stat (1-118)
   player_defence: number;   // Current defence stat (1-118)
   player_x: number;         // Player x position (0-19)
   player_y: number;         // Player y position (0-19)
-  player_aggro: number;     // PlayerAggro enum: 0=none, 1=jad, 2-4=healer 1-3
+  player_aggro: number;     // 0=none, 1..N=jad_N, N+1..=healer
 
   // Prayer state
   active_prayer: number;    // 0=none, 1=mage, 2=range, 3=melee
-  piety_active: boolean;
+  rigour_active: boolean;
 
   // Inventory
-  super_combat_doses: number;
+  bastion_doses: number;
   sara_brew_doses: number;
   super_restore_doses: number;
 
-  // Jad state
-  jad_hp: number;
-  jad_attack: number;       // 0=none, 1=mage, 2=range, 3=melee
-  jad_x: number;            // Jad x position (0-19)
-  jad_y: number;            // Jad y position (0-19)
+  // Dynamic Jad state array
+  jads: JadState[];
 
-  // Healer state
+  // Dynamic healer state array (flattened: [jad0_healer0, jad0_healer1, ..., jad1_healer0, ...])
+  healers: HealerState[];
+
+  // Whether any healers have spawned
   healers_spawned: boolean;
-  healer_1_hp: number;      // 0 if not present
-  healer_1_x: number;
-  healer_1_y: number;
-  healer_1_aggro: number;   // HealerAggro enum: 0=not_present, 1=jad, 2=player
-  healer_2_hp: number;
-  healer_2_x: number;
-  healer_2_y: number;
-  healer_2_aggro: number;
-  healer_3_hp: number;
-  healer_3_x: number;
-  healer_3_y: number;
-  healer_3_aggro: number;
 
   // Starting doses for normalization
-  starting_super_combat_doses: number;
+  starting_bastion_doses: number;
   starting_sara_brew_doses: number;
   starting_super_restore_doses: number;
 }
@@ -91,27 +96,33 @@ export interface ResetResult {
   observation: JadObservation;
 }
 
+// Per-Jad attack tracking state
+interface JadAttackState {
+  attack: number;  // 0=none, 1=mage, 2=range, 3=melee
+  ticksRemaining: number;
+  prevAttackDelay: number;
+}
+
 export class HeadlessEnv {
   private world: World;
   private region: Region;
   private player!: Player;
-  private jad!: Jad;
-  private createRegion: () => Region;
+  private config: JadConfig;
+  private createRegion: (config: JadConfig) => Region;
 
-  // Track Jad's attack for observation
-  private currentJadAttack: number = 0; // 0=none, 1=mage, 2=range, 3=melee
-  private attackTicksRemaining: number = 0;
-  private prevJadAttackDelay: number = 0; // To detect when Jad actually attacks
+  // Track attack state per Jad
+  private jadAttackStates: JadAttackState[] = [];
 
   // Track starting potion doses for normalization
-  private startingSuperCombatDoses: number = 0;
+  private startingBastionDoses: number = 0;
   private startingSaraBrewDoses: number = 0;
   private startingSuperRestoreDoses: number = 0;
 
-  constructor(createRegion: () => Region) {
+  constructor(createRegion: (config: JadConfig) => Region, config: JadConfig = DEFAULT_CONFIG) {
+    this.config = config;
     this.createRegion = createRegion;
     this.world = new World();
-    this.region = createRegion();
+    this.region = createRegion(config);
     this.initializeRegion();
   }
 
@@ -123,23 +134,27 @@ export class HeadlessEnv {
     const result = (this.region as { initialiseRegion(): { player: Player } }).initialiseRegion();
     this.player = result.player;
 
-    // Get Jad from the region's jad getter
-    this.jad = (this.region as JadRegion).jad;
-
     // Set player in Trainer (used by osrs-sdk internals)
     Trainer.setPlayer(this.player);
 
-    // Initialize attack tracking
-    this.currentJadAttack = 0;
-    this.attackTicksRemaining = 0;
-    this.prevJadAttackDelay = this.jad.attackDelay;
+    // Initialize per-Jad attack tracking
+    this.jadAttackStates = [];
+    const jadRegion = this.region as JadRegion;
+    for (let i = 0; i < this.config.jadCount; i++) {
+      const jad = jadRegion.getJad(i);
+      this.jadAttackStates.push({
+        attack: 0,
+        ticksRemaining: 0,
+        prevAttackDelay: jad?.attackDelay ?? 0,
+      });
+    }
 
     // Capture starting potion doses for normalization
     this.captureStartingDoses();
   }
 
   private captureStartingDoses(): void {
-    let superCombatDoses = 0;
+    let bastionDoses = 0;
     let saraBrewDoses = 0;
     let superRestoreDoses = 0;
 
@@ -147,8 +162,8 @@ export class HeadlessEnv {
       for (const item of this.player.inventory) {
         if (item && item instanceof Potion && item.doses > 0) {
           const itemName = item.itemName?.toString().toLowerCase() || '';
-          if (itemName.includes('super combat')) {
-            superCombatDoses += item.doses;
+          if (itemName.includes('bastion')) {
+            bastionDoses += item.doses;
           } else if (itemName.includes('saradomin brew')) {
             saraBrewDoses += item.doses;
           } else if (itemName.includes('restore')) {
@@ -158,7 +173,7 @@ export class HeadlessEnv {
       }
     }
 
-    this.startingSuperCombatDoses = superCombatDoses;
+    this.startingBastionDoses = bastionDoses;
     this.startingSaraBrewDoses = saraBrewDoses;
     this.startingSuperRestoreDoses = superRestoreDoses;
   }
@@ -166,7 +181,7 @@ export class HeadlessEnv {
   reset(): ResetResult {
     // Clear and recreate
     this.world = new World();
-    this.region = this.createRegion();
+    this.region = this.createRegion(this.config);
     this.initializeRegion();
 
     return {
@@ -178,7 +193,7 @@ export class HeadlessEnv {
     // Execute action before tick
     this.executeAction(action);
 
-    // Observe Jad's attack style before tick (for tracking)
+    // Update Jad attack tracking before tick
     this.updateJadAttackTracking();
 
     // Advance simulation by one tick
@@ -187,10 +202,18 @@ export class HeadlessEnv {
     // Get observation after tick
     const observation = this.getObservation();
 
-    // Check termination
+    // Check termination - player dead or ALL Jads dead
     const playerDead = this.player.dying > 0 || this.player.currentStats.hitpoint <= 0;
-    const jadDead = this.jad.dying > 0 || this.jad.currentStats.hitpoint <= 0;
-    const terminated = playerDead || jadDead;
+    const jadRegion = this.region as JadRegion;
+    let allJadsDead = true;
+    for (let i = 0; i < this.config.jadCount; i++) {
+      const jad = jadRegion.getJad(i);
+      if (jad && jad.currentStats.hitpoint > 0 && jad.dying === -1) {
+        allJadsDead = false;
+        break;
+      }
+    }
+    const terminated = playerDead || allJadsDead;
 
     return {
       observation,
@@ -198,58 +221,92 @@ export class HeadlessEnv {
     };
   }
 
+  /**
+   * Execute action based on dynamic action space.
+   * Action structure:
+   * - 0: DO_NOTHING
+   * - 1..N: AGGRO_JAD_1 through AGGRO_JAD_N
+   * - N+1..N+N*H: AGGRO_HEALER (encoded)
+   * - N+N*H+1..N+N*H+7: prayers/potions
+   */
   private executeAction(action: number): void {
     const jadRegion = this.region as JadRegion;
+    const numJads = this.config.jadCount;
+    const healersPerJad = this.config.healersPerJad;
+    const totalHealers = numJads * healersPerJad;
 
-    switch (action) {
-      case JadAction.DO_NOTHING:
-        // Do nothing
-        break;
+    // Action 0: DO_NOTHING
+    if (action === 0) {
+      return;
+    }
 
-      case JadAction.AGGRO_JAD:
-        this.player.setAggro(this.jad);
-        break;
+    // Actions 1..N: AGGRO_JAD_1 through AGGRO_JAD_N
+    if (action >= 1 && action <= numJads) {
+      const jadIndex = action - 1;
+      const jad = jadRegion.getJad(jadIndex);
+      if (jad) {
+        console.log(`[AGGRO] Targeting Jad ${jadIndex} (HP: ${jad.currentStats.hitpoint})`);
+        this.player.setAggro(jad);
+      } else {
+        // Debug: check why jad is null
+        const rawJad = jadRegion['_jads'][jadIndex];
+        if (!rawJad) {
+          console.log(`[AGGRO] Jad ${jadIndex} not found (never spawned)`);
+        } else {
+          console.log(`[AGGRO] Jad ${jadIndex} is dead (HP: ${rawJad.currentStats.hitpoint}, dying: ${rawJad.dying})`);
+        }
+      }
+      return;
+    }
 
-      case JadAction.AGGRO_HEALER_1:
-        const healer1 = jadRegion.getHealer(0);
-        if (healer1) this.player.setAggro(healer1);
-        break;
+    // Actions N+1..N+N*H: AGGRO_HEALER
+    const healerActionStart = numJads + 1;
+    const healerActionEnd = numJads + totalHealers;
+    if (action >= healerActionStart && action <= healerActionEnd) {
+      const healerActionIndex = action - healerActionStart;
+      const jadIndex = Math.floor(healerActionIndex / healersPerJad);
+      const healerIndex = healerActionIndex % healersPerJad;
+      const healer = jadRegion.getHealer(jadIndex, healerIndex);
+      if (healer) {
+        console.log(`[AGGRO] Targeting Healer [${jadIndex}][${healerIndex}] (HP: ${healer.currentStats.hitpoint})`);
+        this.player.setAggro(healer);
+      } else {
+        // Debug: check why healer is null
+        const healerTuple = jadRegion['_healers'].get(jadIndex);
+        const rawHealer = healerTuple?.[healerIndex];
+        if (!rawHealer) {
+          console.log(`[AGGRO] Healer [${jadIndex}][${healerIndex}] not spawned yet`);
+        } else {
+          console.log(`[AGGRO] Healer [${jadIndex}][${healerIndex}] is dead (HP: ${rawHealer.currentStats.hitpoint}, dying: ${rawHealer.dying})`);
+        }
+      }
+      return;
+    }
 
-      case JadAction.AGGRO_HEALER_2:
-        const healer2 = jadRegion.getHealer(1);
-        if (healer2) this.player.setAggro(healer2);
-        break;
+    // Prayer/potion actions (offset by aggro actions)
+    const prayerPotionActionStart = numJads + totalHealers + 1;
+    const relativeAction = action - prayerPotionActionStart;
 
-      case JadAction.AGGRO_HEALER_3:
-        const healer3 = jadRegion.getHealer(2);
-        if (healer3) this.player.setAggro(healer3);
-        break;
-
-      case JadAction.TOGGLE_PROTECT_MELEE:
+    switch (relativeAction) {
+      case 0: // TOGGLE_PROTECT_MELEE
         this.togglePrayer('Protect from Melee');
         break;
-
-      case JadAction.TOGGLE_PROTECT_MISSILES:
+      case 1: // TOGGLE_PROTECT_MISSILES
         this.togglePrayer('Protect from Range');
         break;
-
-      case JadAction.TOGGLE_PROTECT_MAGIC:
+      case 2: // TOGGLE_PROTECT_MAGIC
         this.togglePrayer('Protect from Magic');
         break;
-
-      case JadAction.TOGGLE_PIETY:
-        this.togglePrayer('Piety');
+      case 3: // TOGGLE_RIGOUR
+        this.togglePrayer('Rigour');
         break;
-
-      case JadAction.DRINK_SUPER_COMBAT:
-        this.drinkPotion('super combat');
+      case 4: // DRINK_BASTION
+        this.drinkPotion('bastion');
         break;
-
-      case JadAction.DRINK_SUPER_RESTORE:
+      case 5: // DRINK_SUPER_RESTORE
         this.drinkPotion('restore');
         break;
-
-      case JadAction.DRINK_SARA_BREW:
+      case 6: // DRINK_SARA_BREW
         this.drinkPotion('saradomin brew');
         break;
     }
@@ -259,22 +316,17 @@ export class HeadlessEnv {
     const prayerController = this.player.prayerController;
     if (!prayerController) return;
 
-    // Find the prayer by name
     const targetPrayer = prayerController.findPrayerByName(prayerName);
-
     if (targetPrayer) {
       if (targetPrayer.isActive) {
-        // Deactivate if already active
         targetPrayer.deactivate();
       } else {
-        // Activate if not active - this auto-deactivates conflicting overhead prayers
         targetPrayer.activate(this.player);
       }
     }
   }
 
   private drinkPotion(potionType: string): void {
-    // Find a potion in inventory and drink it
     if (!this.player || !this.player.inventory) return;
     const inventory = this.player.inventory;
 
@@ -282,8 +334,6 @@ export class HeadlessEnv {
       if (item && item instanceof Potion && item.doses > 0) {
         const itemName = item.itemName?.toString().toLowerCase() || '';
         if (itemName.includes(potionType)) {
-          // Use inventoryLeftClick to properly go through eating system
-          // This decrements doses and queues the potion effect for next tick
           item.inventoryLeftClick(this.player);
           break;
         }
@@ -292,53 +342,54 @@ export class HeadlessEnv {
   }
 
   private updateJadAttackTracking(): void {
-    // Track Jad's attack style
-    // The attack style is visible when Jad attacks and persists until damage lands
+    const jadRegion = this.region as JadRegion;
 
-    const currentDelay = this.jad.attackDelay;
+    for (let i = 0; i < this.config.jadCount; i++) {
+      const jad = jadRegion.getJad(i);
+      if (!jad) continue;
 
-    // Detect actual attack: attackDelay was low (0-1), now it's high (just reset after attacking)
-    if (this.prevJadAttackDelay <= 1 && currentDelay > 1) {
-      // Jad just attacked - capture the attack style NOW
-      const style = this.jad.attackStyle;
-      if (style === 'magic') {
-        this.currentJadAttack = 1;
-        this.attackTicksRemaining = 4; // Visible for 4 ticks (attack + 3 projectile flight)
-      } else if (style === 'range') {
-        this.currentJadAttack = 2;
-        this.attackTicksRemaining = 4; // Visible for 4 ticks (attack + 3 projectile flight)
-      } else {
-        // Melee attack - style is 'stab' (from canMeleeIfClose)
-        // Melee is instant, no projectile delay
-        // Use 2 so after immediate decrement it's 1 (visible for 1 tick)
-        this.currentJadAttack = 3;
-        this.attackTicksRemaining = 2;
+      const state = this.jadAttackStates[i];
+      const currentDelay = jad.attackDelay;
+
+      // Detect actual attack: attackDelay was low (0-1), now it's high (just reset after attacking)
+      if (state.prevAttackDelay <= 1 && currentDelay > 1) {
+        const style = jad.attackStyle;
+        if (style === 'magic') {
+          state.attack = 1;
+          state.ticksRemaining = 4;
+        } else if (style === 'range') {
+          state.attack = 2;
+          state.ticksRemaining = 4;
+        } else {
+          state.attack = 3;
+          state.ticksRemaining = 2;
+        }
       }
-    }
 
-    // Decrement visibility timer
-    if (this.attackTicksRemaining > 0) {
-      this.attackTicksRemaining--;
-      if (this.attackTicksRemaining === 0) {
-        this.currentJadAttack = 0;
+      // Decrement visibility timer
+      if (state.ticksRemaining > 0) {
+        state.ticksRemaining--;
+        if (state.ticksRemaining === 0) {
+          state.attack = 0;
+        }
       }
-    }
 
-    this.prevJadAttackDelay = currentDelay;
+      state.prevAttackDelay = currentDelay;
+    }
   }
 
   private getObservation(): JadObservation {
     const jadRegion = this.region as JadRegion;
 
-    // Get active prayer (0=none, 1=mage, 2=range, 3=melee)
+    // Get active prayer
     let activePrayer = 0;
-    let pietyActive = false;
+    let rigourActive = false;
     const prayerController = this.player.prayerController;
     if (prayerController) {
       const magicPrayer = prayerController.findPrayerByName('Protect from Magic');
       const rangePrayer = prayerController.findPrayerByName('Protect from Range');
       const meleePrayer = prayerController.findPrayerByName('Protect from Melee');
-      const pietyPrayer = prayerController.findPrayerByName('Piety');
+      const rigourPrayer = prayerController.findPrayerByName('Rigour');
 
       if (magicPrayer?.isActive) {
         activePrayer = 1;
@@ -348,19 +399,19 @@ export class HeadlessEnv {
         activePrayer = 3;
       }
 
-      pietyActive = pietyPrayer?.isActive ?? false;
+      rigourActive = rigourPrayer?.isActive ?? false;
     }
 
     // Count current potion doses
-    let superCombatDoses = 0;
+    let bastionDoses = 0;
     let saraBrewDoses = 0;
     let superRestoreDoses = 0;
     if (this.player && this.player.inventory) {
       for (const item of this.player.inventory) {
         if (item && item instanceof Potion && item.doses > 0) {
           const itemName = item.itemName?.toString().toLowerCase() || '';
-          if (itemName.includes('super combat')) {
-            superCombatDoses += item.doses;
+          if (itemName.includes('bastion')) {
+            bastionDoses += item.doses;
           } else if (itemName.includes('saradomin brew')) {
             saraBrewDoses += item.doses;
           } else if (itemName.includes('restore')) {
@@ -371,44 +422,89 @@ export class HeadlessEnv {
     }
 
     // Determine player aggro target
-    let playerAggro = PlayerAggro.NONE;
-    if (this.player.aggro === this.jad) {
-      playerAggro = PlayerAggro.JAD;
-    } else if (this.player.aggro) {
-      // Check if aggro is one of the healers
-      for (let i = 0; i < 3; i++) {
-        const healer = jadRegion.getHealer(i);
-        if (healer && this.player.aggro === healer) {
-          playerAggro = PlayerAggro.HEALER_1 + i; // HEALER_1=2, HEALER_2=3, HEALER_3=4
+    // 0=none, 1..N=jad_N, N+1..N+N*H=healer (encoded)
+    let playerAggro = 0;
+    const playerAggroTarget = this.player.aggro;
+    if (playerAggroTarget) {
+      // Check if aggro is one of the Jads
+      for (let i = 0; i < this.config.jadCount; i++) {
+        const jad = jadRegion.getJad(i);
+        if (jad && playerAggroTarget === jad) {
+          playerAggro = i + 1;  // 1-indexed Jad
           break;
+        }
+      }
+
+      // If not a Jad, check if it's a healer
+      if (playerAggro === 0) {
+        const numJads = this.config.jadCount;
+        const healersPerJad = this.config.healersPerJad;
+        for (let jadIdx = 0; jadIdx < numJads; jadIdx++) {
+          for (let healerIdx = 0; healerIdx < healersPerJad; healerIdx++) {
+            const healer = jadRegion.getHealer(jadIdx, healerIdx);
+            if (healer && playerAggroTarget === healer) {
+              // Encode as: numJads + jadIdx * healersPerJad + healerIdx + 1
+              playerAggro = numJads + jadIdx * healersPerJad + healerIdx + 1;
+              break;
+            }
+          }
+          if (playerAggro !== 0) break;
         }
       }
     }
 
-    // Get healer data
-    const getHealerData = (index: number) => {
-      const healer = jadRegion.getHealer(index);
-      if (healer) {
-        return {
-          hp: healer.currentStats?.hitpoint ?? 0,
-          x: healer.location.x,
-          y: healer.location.y,
-          aggro: jadRegion.getHealerAggro(index),
-        };
+    // Build Jad state array
+    const jads: JadState[] = [];
+    for (let i = 0; i < this.config.jadCount; i++) {
+      const jad = jadRegion.getJad(i);
+      const attackState = this.jadAttackStates[i];
+      if (jad) {
+        jads.push({
+          hp: jad.currentStats?.hitpoint ?? 0,
+          attack: attackState?.attack ?? 0,
+          x: jad.location.x,
+          y: jad.location.y,
+          alive: jad.dying === -1 && (jad.currentStats?.hitpoint ?? 0) > 0,
+        });
+      } else {
+        jads.push({ hp: 0, attack: 0, x: 0, y: 0, alive: false });
       }
-      return { hp: 0, x: 0, y: 0, aggro: HealerAggro.NOT_PRESENT };
-    };
+    }
 
-    const healer1 = getHealerData(0);
-    const healer2 = getHealerData(1);
-    const healer3 = getHealerData(2);
+    // Build healer state array (flattened)
+    const healers: HealerState[] = [];
+    let healersSpawned = false;
+    for (let jadIdx = 0; jadIdx < this.config.jadCount; jadIdx++) {
+      for (let healerIdx = 0; healerIdx < this.config.healersPerJad; healerIdx++) {
+        const healer = jadRegion.getHealer(jadIdx, healerIdx);
+        if (healer) {
+          healersSpawned = true;
+          healers.push({
+            hp: healer.currentStats?.hitpoint ?? 0,
+            x: healer.location.x,
+            y: healer.location.y,
+            aggro: jadRegion.getHealerAggro(jadIdx, healerIdx),
+          });
+        } else {
+          healers.push({
+            hp: 0,
+            x: 0,
+            y: 0,
+            aggro: HealerAggro.NOT_PRESENT,
+          });
+        }
+      }
+    }
 
     return {
+      // Config
+      jad_count: this.config.jadCount,
+      healers_per_jad: this.config.healersPerJad,
+
       // Player state
       player_hp: this.player?.currentStats?.hitpoint ?? 0,
       player_prayer: this.player?.currentStats?.prayer ?? 0,
-      player_attack: this.player?.currentStats?.attack ?? 99,
-      player_strength: this.player?.currentStats?.strength ?? 99,
+      player_ranged: this.player?.currentStats?.range ?? 99,
       player_defence: this.player?.currentStats?.defence ?? 99,
       player_x: this.player?.location?.x ?? 0,
       player_y: this.player?.location?.y ?? 0,
@@ -416,39 +512,24 @@ export class HeadlessEnv {
 
       // Prayer state
       active_prayer: activePrayer,
-      piety_active: pietyActive,
+      rigour_active: rigourActive,
 
       // Inventory
-      super_combat_doses: superCombatDoses,
+      bastion_doses: bastionDoses,
       sara_brew_doses: saraBrewDoses,
       super_restore_doses: superRestoreDoses,
 
       // Jad state
-      jad_hp: this.jad?.currentStats?.hitpoint ?? 0,
-      jad_attack: this.currentJadAttack,
-      jad_x: this.jad?.location?.x ?? 0,
-      jad_y: this.jad?.location?.y ?? 0,
+      jads: jads,
 
       // Healer state
-      healers_spawned: jadRegion.healersSpawned,
-      healer_1_hp: healer1.hp,
-      healer_1_x: healer1.x,
-      healer_1_y: healer1.y,
-      healer_1_aggro: healer1.aggro,
-      healer_2_hp: healer2.hp,
-      healer_2_x: healer2.x,
-      healer_2_y: healer2.y,
-      healer_2_aggro: healer2.aggro,
-      healer_3_hp: healer3.hp,
-      healer_3_x: healer3.x,
-      healer_3_y: healer3.y,
-      healer_3_aggro: healer3.aggro,
+      healers: healers,
+      healers_spawned: healersSpawned,
 
       // Starting doses for normalization
-      starting_super_combat_doses: this.startingSuperCombatDoses,
+      starting_bastion_doses: this.startingBastionDoses,
       starting_sara_brew_doses: this.startingSaraBrewDoses,
       starting_super_restore_doses: this.startingSuperRestoreDoses,
     };
   }
-
 }

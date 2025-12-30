@@ -10,7 +10,8 @@ import numpy as np
 from stable_baselines3.common.vec_env import VecEnvWrapper
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from observations import NORMALIZE_MASK
+from config import JadConfig
+from observations import get_normalize_mask, NORMALIZE_MASK
 
 
 class RunningNormalizer:
@@ -85,6 +86,7 @@ class SelectiveVecNormalize(VecEnvWrapper):
         clip_obs: float = 10.0,
         clip_reward: float = 10.0,
         gamma: float = 0.99,
+        config: JadConfig | None = None,
     ):
         """
         Args:
@@ -95,6 +97,7 @@ class SelectiveVecNormalize(VecEnvWrapper):
             clip_obs: Max absolute value for normalized observations
             clip_reward: Max absolute value for normalized rewards
             gamma: Discount factor for return calculation
+            config: JadConfig for determining normalize mask (default: 1 Jad, 3 healers)
         """
         super().__init__(venv)
 
@@ -104,7 +107,12 @@ class SelectiveVecNormalize(VecEnvWrapper):
         self.clip_obs = clip_obs
         self.clip_reward = clip_reward
         self.gamma = gamma
-        self.normalize_mask = NORMALIZE_MASK
+
+        # Get normalize mask for this config
+        if config is not None:
+            self.normalize_mask = get_normalize_mask(config)
+        else:
+            self.normalize_mask = NORMALIZE_MASK
 
         # Observation normalizer for continuous features
         n_continuous = int(np.sum(self.normalize_mask))

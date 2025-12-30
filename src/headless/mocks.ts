@@ -276,5 +276,20 @@ class HeadlessViewport {
 
 // Set the mock viewport singleton (using require to avoid loading osrs-sdk before mocks)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { Viewport } = require('osrs-sdk');
+const { Viewport, Assets } = require('osrs-sdk');
 (Viewport as unknown as { viewport: HeadlessViewport }).viewport = new HeadlessViewport();
+
+// Mock Assets.getAssetUrl to prevent network fetches in headless mode
+// The original implementation fetches from oldschool-cdn.com which causes timeouts
+const originalGetAssetUrl = Assets.getAssetUrl.bind(Assets);
+Assets.getAssetUrl = function(asset: string): string {
+  const url = `https://oldschool-cdn.com/${asset}`;
+  // Mark as already loaded to prevent any fetch attempts
+  Assets.loadedAssets[url] = true;
+  // Don't add to loadingAssetUrls, don't increment assetCount, don't fetch
+  return url;
+};
+
+// Ensure checkAssetsLoaded always reports complete (no pending loads)
+Assets.loadingAssetUrls = [];
+Assets.assetCount = 0;

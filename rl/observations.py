@@ -1,38 +1,83 @@
 """
 Observation encoding for Jad RL environment.
+Supports dynamic observation sizes based on Jad count.
 
-Observation structure (46 dimensions total):
-- 22 continuous features (normalized to [0,1])
-- 22 one-hot features
-- 2 binary features
+Observation structure for N Jads:
+- Continuous features (normalized to [0,1])
+- One-hot features for player aggro, prayer, jad attacks, healer aggros
+- Binary features (piety, healers_spawned)
 """
 
 import numpy as np
 from env import Observation
+from config import JadConfig
 
-# Observation dimensions
-# 22 continuous + 5 player_aggro + 4 active_prayer + 4 jad_attack + 3*3 healer_aggro + 2 binary = 46
-OBS_DIM = 46
 
 # Normalization constants
 MAX_PLAYER_HP = 115      # Sara brew can boost above 99
 MAX_PRAYER = 99
-MAX_STAT = 118           # Super combat boosted
+MAX_MELEE_STAT = 118     # Super combat boosted (attack, strength, defence)
+MAX_RANGED_STAT = 112    # Bastion boosted (99 + 13)
+MAX_MAGIC_STAT = 109     # Imbued heart boosted (99 + 10)
 MAX_COORD = 19           # 20x20 grid (0-19)
 MAX_JAD_HP = 350
 MAX_HEALER_HP = 90
 
-# Indices for continuous features (will be normalized)
-# These are the first 22 values in the array
-CONTINUOUS_FEATURES = 22
 
-# Masks for normalization (True = normalize, False = don't normalize)
-# First 22 are continuous, rest are one-hot/binary
-NORMALIZE_MASK = np.array(
-    [True] * CONTINUOUS_FEATURES +  # All continuous features normalized
-    [False] * (OBS_DIM - CONTINUOUS_FEATURES),  # One-hot and binary not normalized
-    dtype=bool
-)
+def get_obs_dim(config: JadConfig) -> int:
+    """
+    Calculate observation dimension for given Jad configuration.
+
+    Structure:
+    - Player continuous: 9 (hp, prayer, ranged, def, 3 potion doses, x, y)
+    - Player aggro one-hot: 1 + jad_count + jad_count * healers_per_jad
+    - Active prayer one-hot: 4
+    - Per-Jad continuous: 3 (hp, x, y) * jad_count
+    - Per-Jad attack one-hot: 4 * jad_count (none/mage/range/melee)
+    - Per-Healer continuous: 3 (hp, x, y) * jad_count * healers_per_jad
+    - Per-Healer aggro one-hot: 3 * jad_count * healers_per_jad
+    - Binary: 2 (rigour_active, healers_spawned)
+    """
+    jad_count = config.jad_count
+    healers_per_jad = config.healers_per_jad
+    total_healers = jad_count * healers_per_jad
+
+    player_continuous = 9
+    player_aggro_onehot = 1 + jad_count + total_healers
+    active_prayer_onehot = 4
+    jad_continuous = 3 * jad_count  # hp, x, y per jad
+    jad_attack_onehot = 4 * jad_count
+    healer_continuous = 3 * total_healers
+    healer_aggro_onehot = 3 * total_healers
+    binary = 2
+
+    return (player_continuous + player_aggro_onehot + active_prayer_onehot +
+            jad_continuous + jad_attack_onehot + healer_continuous +
+            healer_aggro_onehot + binary)
+
+
+def get_continuous_feature_count(config: JadConfig) -> int:
+    """Get the number of continuous features that should be normalized."""
+    jad_count = config.jad_count
+    healers_per_jad = config.healers_per_jad
+    total_healers = jad_count * healers_per_jad
+
+    player_continuous = 9
+    jad_continuous = 3 * jad_count
+    healer_continuous = 3 * total_healers
+
+    return player_continuous + jad_continuous + healer_continuous
+
+
+def get_normalize_mask(config: JadConfig) -> np.ndarray:
+    """Get mask for which features should be normalized (True = normalize)."""
+    obs_dim = get_obs_dim(config)
+    continuous_count = get_continuous_feature_count(config)
+
+    # Continuous features first, then one-hot/binary
+    mask = np.zeros(obs_dim, dtype=bool)
+    mask[:continuous_count] = True
+    return mask
 
 
 def one_hot(index: int, size: int) -> np.ndarray:
@@ -54,99 +99,105 @@ def obs_to_array(obs: Observation) -> np.ndarray:
     """
     Convert Observation dataclass to numpy array with proper encoding.
 
+    The array structure is:
+    1. Continuous features (player, jads, healers)
+    2. One-hot features (player_aggro, active_prayer, jad_attacks, healer_aggros)
+    3. Binary features (rigour_active, healers_spawned)
+
     Returns:
-        Array of shape (46,):
-
-        Continuous features (22, normalized to [0,1]):
-        - [0]: player_hp / 115
-        - [1]: player_prayer / 99
-        - [2]: player_attack / 118
-        - [3]: player_strength / 118
-        - [4]: player_defence / 118
-        - [5]: super_combat_doses / starting_doses
-        - [6]: sara_brew_doses / starting_doses
-        - [7]: super_restore_doses / starting_doses
-        - [8]: player_x / 19
-        - [9]: player_y / 19
-        - [10]: jad_hp / 350
-        - [11]: jad_x / 19
-        - [12]: jad_y / 19
-        - [13]: healer_1_hp / 90
-        - [14]: healer_1_x / 19
-        - [15]: healer_1_y / 19
-        - [16]: healer_2_hp / 90
-        - [17]: healer_2_x / 19
-        - [18]: healer_2_y / 19
-        - [19]: healer_3_hp / 90
-        - [20]: healer_3_x / 19
-        - [21]: healer_3_y / 19
-
-        One-hot features (22):
-        - [22:27]: player_aggro (5 values: none, jad, healer1, healer2, healer3)
-        - [27:31]: active_prayer (4 values: none, mage, range, melee)
-        - [31:35]: jad_attack (4 values: none, mage, range, melee)
-        - [35:38]: healer_1_aggro (3 values: not_present, jad, player)
-        - [38:41]: healer_2_aggro (3 values: not_present, jad, player)
-        - [41:44]: healer_3_aggro (3 values: not_present, jad, player)
-
-        Binary features (2):
-        - [44]: piety_active
-        - [45]: healers_spawned
+        Array of shape (obs_dim,) where obs_dim = get_obs_dim(config)
     """
-    # Continuous features (normalized to [0,1])
-    continuous = np.array([
-        # Player state
+    jad_count = obs.jad_count
+    healers_per_jad = obs.healers_per_jad
+    total_healers = jad_count * healers_per_jad
+
+    # ========== CONTINUOUS FEATURES ==========
+
+    # Player continuous (9 features)
+    player_continuous = np.array([
         obs.player_hp / MAX_PLAYER_HP,
         obs.player_prayer / MAX_PRAYER,
-        obs.player_attack / MAX_STAT,
-        obs.player_strength / MAX_STAT,
-        obs.player_defence / MAX_STAT,
-        # Inventory (normalized by starting doses)
-        safe_divide(obs.super_combat_doses, obs.starting_super_combat_doses),
+        obs.player_ranged / MAX_RANGED_STAT,
+        obs.player_defence / MAX_MELEE_STAT,  # Defence boosted by super combat or sara brew
+        safe_divide(obs.bastion_doses, obs.starting_bastion_doses),
         safe_divide(obs.sara_brew_doses, obs.starting_sara_brew_doses),
         safe_divide(obs.super_restore_doses, obs.starting_super_restore_doses),
-        # Player position
         obs.player_x / MAX_COORD,
         obs.player_y / MAX_COORD,
-        # Jad state
-        obs.jad_hp / MAX_JAD_HP,
-        obs.jad_x / MAX_COORD,
-        obs.jad_y / MAX_COORD,
-        # Healer 1
-        obs.healer_1_hp / MAX_HEALER_HP,
-        obs.healer_1_x / MAX_COORD,
-        obs.healer_1_y / MAX_COORD,
-        # Healer 2
-        obs.healer_2_hp / MAX_HEALER_HP,
-        obs.healer_2_x / MAX_COORD,
-        obs.healer_2_y / MAX_COORD,
-        # Healer 3
-        obs.healer_3_hp / MAX_HEALER_HP,
-        obs.healer_3_x / MAX_COORD,
-        obs.healer_3_y / MAX_COORD,
     ], dtype=np.float32)
 
-    # One-hot features
-    player_aggro_onehot = one_hot(obs.player_aggro, 5)  # none, jad, h1, h2, h3
-    active_prayer_onehot = one_hot(obs.active_prayer, 4)  # none, mage, range, melee
-    jad_attack_onehot = one_hot(obs.jad_attack, 4)  # none, mage, range, melee
-    healer_1_aggro_onehot = one_hot(obs.healer_1_aggro, 3)  # not_present, jad, player
-    healer_2_aggro_onehot = one_hot(obs.healer_2_aggro, 3)
-    healer_3_aggro_onehot = one_hot(obs.healer_3_aggro, 3)
+    # Jad continuous (3 * jad_count features)
+    jad_continuous = []
+    for jad in obs.jads:
+        jad_continuous.extend([
+            jad.hp / MAX_JAD_HP,
+            jad.x / MAX_COORD,
+            jad.y / MAX_COORD,
+        ])
+    jad_continuous = np.array(jad_continuous, dtype=np.float32)
 
-    # Binary features
+    # Healer continuous (3 * total_healers features)
+    healer_continuous = []
+    for healer in obs.healers:
+        healer_continuous.extend([
+            healer.hp / MAX_HEALER_HP,
+            healer.x / MAX_COORD,
+            healer.y / MAX_COORD,
+        ])
+    healer_continuous = np.array(healer_continuous, dtype=np.float32)
+
+    # ========== ONE-HOT FEATURES ==========
+
+    # Player aggro one-hot (1 + jad_count + total_healers)
+    aggro_size = 1 + jad_count + total_healers
+    player_aggro_onehot = one_hot(obs.player_aggro, aggro_size)
+
+    # Active prayer one-hot (4: none, mage, range, melee)
+    active_prayer_onehot = one_hot(obs.active_prayer, 4)
+
+    # Per-Jad attack one-hot (4 * jad_count)
+    jad_attack_onehot = []
+    for jad in obs.jads:
+        jad_attack_onehot.append(one_hot(jad.attack, 4))
+    jad_attack_onehot = np.concatenate(jad_attack_onehot) if jad_attack_onehot else np.array([], dtype=np.float32)
+
+    # Per-Healer aggro one-hot (3 * total_healers)
+    healer_aggro_onehot = []
+    for healer in obs.healers:
+        healer_aggro_onehot.append(one_hot(healer.aggro, 3))
+    healer_aggro_onehot = np.concatenate(healer_aggro_onehot) if healer_aggro_onehot else np.array([], dtype=np.float32)
+
+    # ========== BINARY FEATURES ==========
+
     binary = np.array([
-        float(obs.piety_active),
+        float(obs.rigour_active),
         float(obs.healers_spawned),
     ], dtype=np.float32)
 
+    # Concatenate all features
     return np.concatenate([
-        continuous,
+        player_continuous,
+        jad_continuous,
+        healer_continuous,
         player_aggro_onehot,
         active_prayer_onehot,
         jad_attack_onehot,
-        healer_1_aggro_onehot,
-        healer_2_aggro_onehot,
-        healer_3_aggro_onehot,
+        healer_aggro_onehot,
         binary,
     ])
+
+
+# For backwards compatibility with 1-Jad config
+def get_default_obs_dim() -> int:
+    """Get observation dimension for default 1-Jad, 3-healer config."""
+    return get_obs_dim(JadConfig(jad_count=1, healers_per_jad=3))
+
+
+# Legacy constant for backwards compatibility
+OBS_DIM = get_default_obs_dim()
+
+# Legacy constant for backwards compatibility
+CONTINUOUS_FEATURES = get_continuous_feature_count(JadConfig(jad_count=1, healers_per_jad=3))
+
+# Legacy mask for backwards compatibility
+NORMALIZE_MASK = get_normalize_mask(JadConfig(jad_count=1, healers_per_jad=3))

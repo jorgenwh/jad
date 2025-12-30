@@ -33,6 +33,12 @@
     #sidebar_content {
       padding: 10px;
     }
+    .obs-jad, .obs-healer {
+      margin: 4px 0;
+      padding: 4px 6px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 3px;
+    }
   </style>
 </head>
 <body>
@@ -46,6 +52,12 @@
         <div>Reward: <span id="agent_reward">-</span></div>
         <div>Steps: <span id="agent_steps">-</span></div>
 
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;">
+          <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Config</div>
+          <div>Jads: <span id="obs_jad_count">-</span></div>
+          <div>Healers/Jad: <span id="obs_healers_per_jad">-</span></div>
+        </div>
+
         <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #555;">
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Agent</div>
           <div>Action: <span id="agent_action">-</span></div>
@@ -56,41 +68,32 @@
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Player</div>
           <div>HP: <span id="obs_hp">-</span></div>
           <div>Prayer: <span id="obs_prayer">-</span></div>
-          <div>Attack: <span id="obs_attack">-</span></div>
-          <div>Strength: <span id="obs_strength">-</span></div>
+          <div>Ranged: <span id="obs_ranged">-</span></div>
           <div>Defence: <span id="obs_defence">-</span></div>
           <div>Position: <span id="obs_pos">-</span></div>
           <div>Aggro: <span id="obs_aggro">-</span></div>
           <div>Active Prayer: <span id="obs_active_prayer">-</span></div>
-          <div>Piety: <span id="obs_piety">-</span></div>
+          <div>Rigour: <span id="obs_rigour">-</span></div>
         </div>
 
         <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;">
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Inventory</div>
-          <div>Super Combat: <span id="obs_super_combat">-</span></div>
+          <div>Bastion: <span id="obs_bastion">-</span></div>
           <div>Sara Brew: <span id="obs_sara_brew">-</span></div>
           <div>Super Restore: <span id="obs_restore">-</span></div>
         </div>
 
         <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;">
-          <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Jad</div>
-          <div>HP: <span id="obs_jad_hp">-</span></div>
-          <div>Attack: <span id="obs_jad_attack">-</span></div>
-          <div>Position: <span id="obs_jad_pos">-</span></div>
+          <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Jads</div>
+          <div id="obs_jads_container" style="font-size: 12px;">
+          </div>
         </div>
 
         <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;">
           <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Healers</div>
           <div>Spawned: <span id="obs_healers_spawned">-</span></div>
-          <div>Healer 1 HP: <span id="obs_healer_1_hp">-</span></div>
-          <div>Healer 1 Position: <span id="obs_healer_1_pos">-</span></div>
-          <div>Healer 1 Aggro: <span id="obs_healer_1_aggro">-</span></div>
-          <div>Healer 2 HP: <span id="obs_healer_2_hp">-</span></div>
-          <div>Healer 2 Position: <span id="obs_healer_2_pos">-</span></div>
-          <div>Healer 2 Aggro: <span id="obs_healer_2_aggro">-</span></div>
-          <div>Healer 3 HP: <span id="obs_healer_3_hp">-</span></div>
-          <div>Healer 3 Position: <span id="obs_healer_3_pos">-</span></div>
-          <div>Healer 3 Aggro: <span id="obs_healer_3_aggro">-</span></div>
+          <div id="obs_healers_container" style="font-size: 12px;">
+          </div>
         </div>
       </div>
     </div>

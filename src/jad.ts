@@ -98,11 +98,30 @@ class JadRangeWeapon extends RangedWeapon {
 
 export class Jad extends Mob {
   private hasProccedHealers = false;
-  private healerCount = 3;
+  private healerCount: number;
+  private jadIndex: number;
+  private _attackSpeed: number;
 
-  constructor(region: Region, location: Location, options?: UnitOptions) {
+  constructor(
+    region: Region,
+    location: Location,
+    jadIndex: number = 0,
+    healerCount: number = 3,
+    attackSpeed: number = 8,
+    options?: UnitOptions
+  ) {
     super(region, location, options);
+    this.jadIndex = jadIndex;
+    this.healerCount = healerCount;
+    this._attackSpeed = attackSpeed;
     this.autoRetaliate = true;
+  }
+
+  /**
+   * Get the index of this Jad (0-based).
+   */
+  getJadIndex(): number {
+    return this.jadIndex;
   }
 
   mobName() {
@@ -122,7 +141,7 @@ export class Jad extends Mob {
   }
 
   get attackSpeed() {
-    return 8;
+    return this._attackSpeed;
   }
 
   get flinchDelay() {
@@ -240,8 +259,8 @@ export class Jad extends Mob {
           );
           this.region.addMob(healer);
 
-          // Register healer with region for stable index tracking
-          (this.region as JadRegion).registerHealer(i, healer);
+          // Register healer with region for stable index tracking (jadIndex, healerIndex)
+          (this.region as JadRegion).registerHealer(this.jadIndex, i, healer);
         }
       }
     }

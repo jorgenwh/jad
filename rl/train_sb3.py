@@ -1,12 +1,15 @@
 """
 Training script using Stable-Baselines3 with parallelized environments.
+Supports 1-6 Jads with per-Jad healers.
 
 Usage:
-    python train_sb3.py                              # Train with default settings
-    python train_sb3.py --num-envs 8                 # Use 8 parallel environments
-    python train_sb3.py --timesteps 500000           # Train for 500k timesteps
-    python train_sb3.py --timesteps 0                # Train forever (Ctrl+C to stop)
-    python train_sb3.py --resume checkpoints/best_sb3.zip  # Resume from checkpoint
+    python train_sb3.py                                  # Train 1-Jad with default settings
+    python train_sb3.py --jad-count 2                    # Train 2-Jad environment
+    python train_sb3.py --jad-count 6 --num-envs 8       # 6 Jads with 8 parallel envs
+    python train_sb3.py --timesteps 500000               # Train for 500k timesteps
+    python train_sb3.py --timesteps 0                    # Train forever (Ctrl+C to stop)
+    python train_sb3.py --resume checkpoints/best_sb3_1jad.zip  # Resume from checkpoint
+    python train_sb3.py --reward-func aggressive         # Use aggressive reward function
 """
 
 import argparse
@@ -17,7 +20,10 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
-from jad_gymnasium_env import make_jad_env, OBS_DIM
+from config import JadConfig, get_action_count
+from jad_gymnasium_env import make_jad_env
+from observations import get_obs_dim
+from rewards import list_reward_functions
 from vec_normalize import SelectiveVecNormalize
 
 
@@ -133,6 +139,8 @@ class EpisodeStatsCallback(BaseCallback):
 
 
 def train(
+    jad_count: int = 1,
+    healers_per_jad: int = 3,
     num_envs: int = 4,
     total_timesteps: int = 200_000,
     n_steps: int = 512,
@@ -148,11 +156,14 @@ def train(
     lstm_hidden_size: int = 64,
     checkpoint_dir: str = "checkpoints",
     resume_path: str | None = None,
+    reward_func: str = "default",
 ):
     """
     Train using Stable-Baselines3 PPO with LSTM policy and parallelized environments.
 
     Args:
+        jad_count: Number of Jads (1-6)
+        healers_per_jad: Number of healers per Jad (0-5)
         num_envs: Number of parallel environments
         total_timesteps: Total training timesteps across all envs
         n_steps: Steps per env before update (total = n_steps * num_envs)
@@ -168,25 +179,38 @@ def train(
         lstm_hidden_size: LSTM hidden layer size
         checkpoint_dir: Directory for saving checkpoints
         resume_path: Path to .zip checkpoint to resume training from
+        reward_func: Reward function to use (default, sparse, prayer_only, aggressive)
     """
+    # Create config
+    config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
+    obs_dim = get_obs_dim(config)
+    action_count = get_action_count(config)
+
+    print(f"Configuration: {jad_count} Jad(s), {healers_per_jad} healers per Jad")
+    print(f"Reward function: {reward_func}")
+    print(f"Observation dimension: {obs_dim}")
+    print(f"Action count: {action_count}")
+
     # Create checkpoint directory
     checkpoint_path = Path(checkpoint_dir)
     checkpoint_path.mkdir(exist_ok=True)
+
+    # Checkpoint paths include jad count for separate models
+    model_save_path = checkpoint_path / f"best_sb3_{jad_count}jad"
+    normalizer_path = checkpoint_path / f"normalizer_sb3_{jad_count}jad.npz"
 
     # Create vectorized environments
     print(f"Creating {num_envs} parallel environments...")
 
     # Note: DummyVecEnv is often faster than SubprocVecEnv for fast environments
     # because it avoids inter-process communication overhead.
-    # SubprocVecEnv only helps when env.step() is slow (physics, rendering, etc.)
-    venv = DummyVecEnv([make_jad_env() for _ in range(num_envs)])
+    venv = DummyVecEnv([make_jad_env(config, reward_type=reward_func) for _ in range(num_envs)])
 
     # Wrap with SelectiveVecNormalize for shared observation normalization
     # This normalizes only continuous features, leaving one-hot encodings unchanged
-    env = SelectiveVecNormalize(venv, training=True)
+    env = SelectiveVecNormalize(venv, training=True, config=config)
 
     # Load normalizer stats if resuming
-    normalizer_path = checkpoint_path / "normalizer_sb3.npz"
     if resume_path and normalizer_path.exists():
         env.set_normalizer_state(SelectiveVecNormalize.load_normalizer(str(normalizer_path)))
         print(f"Loaded normalizer stats: {normalizer_path}")
@@ -235,7 +259,7 @@ def train(
         vec_normalize_env=env,
         num_envs=num_envs,
         log_interval=100,  # Print stats every 100 episodes
-        save_path=str(checkpoint_path / "best_sb3"),
+        save_path=str(model_save_path),
         normalizer_path=str(normalizer_path),
         verbose=1,
     )
@@ -256,15 +280,6 @@ def train(
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
 
-    # Save final model and normalizer
-    # final_path = checkpoint_path / "final_sb3"
-    # model.save(str(final_path))
-    # final_normalizer_path = checkpoint_path / "normalizer_final_sb3.npz"
-    # env.save_normalizer(str(final_normalizer_path))
-    # print(f"\nSaved final model: {final_path}")
-    # print(f"Saved final normalizer: {final_normalizer_path}")
-    # print(f"Best mean reward: {callback.best_mean_reward:.1f}")
-
     env.close()
     return model
 
@@ -272,16 +287,28 @@ def train(
 def main():
     parser = argparse.ArgumentParser(description="Train Jad agent with SB3 (LSTM)")
     parser.add_argument(
+        "--jad-count",
+        type=int,
+        default=1,
+        help="Number of Jads (1-6, default: 1)",
+    )
+    parser.add_argument(
+        "--healers-per-jad",
+        type=int,
+        default=3,
+        help="Number of healers per Jad (0-5, default: 3)",
+    )
+    parser.add_argument(
         "--num-envs",
         type=int,
-        default=4,
+        default=8,
         help="Number of parallel environments (default: 4)",
     )
     parser.add_argument(
         "--timesteps",
         type=int,
-        default=200_000,
-        help="Total training timesteps (default: 200000, 0 = unlimited)",
+        default=0,
+        help="Total training timesteps (default: 0 = unlimited)",
     )
     parser.add_argument(
         "--n-steps",
@@ -292,13 +319,13 @@ def main():
     parser.add_argument(
         "--lstm-hidden-size",
         type=int,
-        default=64,
+        default=128,
         help="LSTM hidden layer size (default: 64)",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=64,
+        default=128,
         help="Minibatch size for PPO updates (default: 64)",
     )
     parser.add_argument(
@@ -313,9 +340,18 @@ def main():
         default=None,
         help="Path to checkpoint .zip to resume training from",
     )
+    parser.add_argument(
+        "--reward-func",
+        type=str,
+        default="default",
+        choices=list_reward_functions(),
+        help=f"Reward function to use (default: default). Available: {list_reward_functions()}",
+    )
     args = parser.parse_args()
 
     train(
+        jad_count=args.jad_count,
+        healers_per_jad=args.healers_per_jad,
         num_envs=args.num_envs,
         total_timesteps=args.timesteps,
         n_steps=args.n_steps,
@@ -323,6 +359,7 @@ def main():
         lstm_hidden_size=args.lstm_hidden_size,
         checkpoint_dir=args.checkpoint_dir,
         resume_path=args.resume,
+        reward_func=args.reward_func,
     )
 
 

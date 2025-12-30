@@ -1,6 +1,10 @@
 /**
  * Headless entry point for the Jad RL environment.
  * Runs the simulation without browser rendering.
+ *
+ * Configuration via environment variables:
+ * - JAD_COUNT: Number of Jads (1-6, default: 1)
+ * - HEALERS_PER_JAD: Number of healers per Jad (0-5, default: 3)
  */
 
 // Must import mocks FIRST before any osrs-sdk imports
@@ -8,10 +12,16 @@ import './mocks';
 
 import * as readline from 'readline';
 import { JadRegion } from '../jad-region';
-import { HeadlessEnv } from './env';
+import { HeadlessEnv, getActionCount } from './env';
+import { parseConfig, JadConfig } from '../config';
 
-// Create environment
-const env = new HeadlessEnv(() => new JadRegion());
+// Parse config from environment
+const config = parseConfig();
+console.error(`Jad config: ${config.jadCount} Jad(s), ${config.healersPerJad} healers per Jad`);
+console.error(`Action count: ${getActionCount(config)}`);
+
+// Create environment with config
+const env = new HeadlessEnv((cfg: JadConfig) => new JadRegion(cfg), config);
 
 // Set up stdio protocol
 const rl = readline.createInterface({

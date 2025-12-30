@@ -1,69 +1,84 @@
 """
 Jad environment wrapper.
 Communicates with the Node.js headless simulation via JSON over stdio.
+Supports 1-6 Jads with per-Jad healers.
 """
 
 import subprocess
 import json
+import os
 from enum import Enum, auto
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from config import JadConfig, get_action_count
 
 
 class TerminationState(Enum):
     """How an episode ended (or didn't)."""
     ONGOING = auto()       # Episode still running
     PLAYER_DIED = auto()   # Player HP reached 0
-    JAD_KILLED = auto()    # Jad HP reached 0
+    JAD_KILLED = auto()    # All Jads HP reached 0
     TRUNCATED = auto()     # Hit max episode length
 
 
 @dataclass
+class JadState:
+    """State of a single Jad."""
+    hp: int
+    attack: int  # 0=none, 1=mage, 2=range, 3=melee
+    x: int
+    y: int
+    alive: bool
+
+
+@dataclass
+class HealerState:
+    """State of a single healer."""
+    hp: int
+    x: int
+    y: int
+    aggro: int  # 0=not_present, 1=jad, 2=player
+
+
+@dataclass
 class Observation:
+    """Observation from the Jad environment."""
+    # Config
+    jad_count: int
+    healers_per_jad: int
+
     # Player state
     player_hp: int
     player_prayer: int
-    player_attack: int      # Current attack stat (1-118)
-    player_strength: int    # Current strength stat (1-118)
+    player_ranged: int      # Current ranged stat (1-118)
     player_defence: int     # Current defence stat (1-118)
     player_x: int           # Player x position (0-19)
     player_y: int           # Player y position (0-19)
-    player_aggro: int       # 0=none, 1=jad, 2=healer1, 3=healer2, 4=healer3
+    player_aggro: int       # 0=none, 1..N=jad, N+1..=healer
 
     # Prayer state
     active_prayer: int      # 0=none, 1=mage, 2=range, 3=melee
-    piety_active: bool
+    rigour_active: bool
 
     # Inventory
-    super_combat_doses: int
+    bastion_doses: int
     sara_brew_doses: int
     super_restore_doses: int
 
-    # Jad state
-    jad_hp: int
-    jad_attack: int         # 0=none, 1=mage, 2=range, 3=melee
-    jad_x: int              # Jad x position (0-19)
-    jad_y: int              # Jad y position (0-19)
+    # Dynamic Jad state
+    jads: list[JadState] = field(default_factory=list)
 
-    # Healer state
-    healers_spawned: bool
-    healer_1_hp: int        # 0 if not present
-    healer_1_x: int
-    healer_1_y: int
-    healer_1_aggro: int     # 0=not_present, 1=jad, 2=player
-    healer_2_hp: int
-    healer_2_x: int
-    healer_2_y: int
-    healer_2_aggro: int
-    healer_3_hp: int
-    healer_3_x: int
-    healer_3_y: int
-    healer_3_aggro: int
+    # Dynamic healer state (flattened)
+    healers: list[HealerState] = field(default_factory=list)
+
+    # Whether any healers have spawned
+    healers_spawned: bool = False
 
     # Starting doses for normalization
-    starting_super_combat_doses: int
-    starting_sara_brew_doses: int
-    starting_super_restore_doses: int
+    starting_bastion_doses: int = 4
+    starting_sara_brew_doses: int = 4
+    starting_super_restore_doses: int = 4
 
 
 @dataclass
@@ -75,24 +90,18 @@ class StepResult:
 class JadEnv:
     """Environment for Jad prayer switching simulation."""
 
-    # Action constants (12 discrete actions)
-    DO_NOTHING = 0
-    AGGRO_JAD = 1
-    AGGRO_HEALER_1 = 2
-    AGGRO_HEALER_2 = 3
-    AGGRO_HEALER_3 = 4
-    TOGGLE_PROTECT_MELEE = 5
-    TOGGLE_PROTECT_MISSILES = 6
-    TOGGLE_PROTECT_MAGIC = 7
-    TOGGLE_PIETY = 8
-    DRINK_SUPER_COMBAT = 9
-    DRINK_SUPER_RESTORE = 10
-    DRINK_SARA_BREW = 11
-    NUM_ACTIONS = 12
-
-    def __init__(self):
+    def __init__(self, config: JadConfig | None = None):
         self._proc: subprocess.Popen | None = None
         self._script_dir = Path(__file__).parent
+        self._config = config or JadConfig()
+
+    @property
+    def config(self) -> JadConfig:
+        return self._config
+
+    @property
+    def num_actions(self) -> int:
+        return get_action_count(self._config)
 
     def _start_process(self) -> None:
         """Start the Node.js headless environment process."""
@@ -100,12 +109,19 @@ class JadEnv:
             return
 
         bootstrap_path = self._script_dir / "../dist-headless/headless/bootstrap.js"
+
+        # Set environment variables for config
+        env = os.environ.copy()
+        env["JAD_COUNT"] = str(self._config.jad_count)
+        env["HEALERS_PER_JAD"] = str(self._config.healers_per_jad)
+
         self._proc = subprocess.Popen(
             ["node", str(bootstrap_path)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,  # Capture stderr to see errors
             text=True,
+            env=env,
         )
 
     def _send(self, command: dict) -> dict:
@@ -113,23 +129,58 @@ class JadEnv:
         if self._proc is None:
             raise RuntimeError("Environment not started")
 
-        self._proc.stdin.write(json.dumps(command) + "\n")
-        self._proc.stdin.flush()
+        try:
+            self._proc.stdin.write(json.dumps(command) + "\n")
+            self._proc.stdin.flush()
+        except BrokenPipeError:
+            # Process crashed - try to get stderr for debugging
+            stderr = self._proc.stderr.read() if self._proc.stderr else ""
+            raise RuntimeError(f"Environment process crashed. Stderr: {stderr}")
 
         line = self._proc.stdout.readline()
         if not line:
-            raise RuntimeError("Environment closed unexpectedly")
+            stderr = self._proc.stderr.read() if self._proc.stderr else ""
+            raise RuntimeError(f"Environment closed unexpectedly. Stderr: {stderr}")
 
         return json.loads(line)
 
     def _parse_observation(self, obs: dict) -> Observation:
         """Parse observation dict into Observation dataclass."""
+        jad_count = obs.get("jad_count", 1)
+        healers_per_jad = obs.get("healers_per_jad", 3)
+
+        # Parse Jad states from array
+        jads = []
+        jads_data = obs.get("jads", [])
+        for jad_data in jads_data:
+            jads.append(JadState(
+                hp=jad_data.get("hp", 0),
+                attack=jad_data.get("attack", 0),
+                x=jad_data.get("x", 0),
+                y=jad_data.get("y", 0),
+                alive=jad_data.get("alive", False),
+            ))
+
+        # Parse healer states from array
+        healers = []
+        healers_data = obs.get("healers", [])
+        for healer_data in healers_data:
+            healers.append(HealerState(
+                hp=healer_data.get("hp", 0),
+                x=healer_data.get("x", 0),
+                y=healer_data.get("y", 0),
+                aggro=healer_data.get("aggro", 0),
+            ))
+
         return Observation(
+            # Config
+            jad_count=jad_count,
+            healers_per_jad=healers_per_jad,
+
             # Player state
             player_hp=obs["player_hp"],
             player_prayer=obs["player_prayer"],
-            player_attack=obs.get("player_attack", 99),
-            player_strength=obs.get("player_strength", 99),
+            player_ranged=obs.get("player_ranged", 99),
             player_defence=obs.get("player_defence", 99),
             player_x=obs.get("player_x", 0),
             player_y=obs.get("player_y", 0),
@@ -137,36 +188,22 @@ class JadEnv:
 
             # Prayer state
             active_prayer=obs["active_prayer"],
-            piety_active=obs.get("piety_active", False),
+            rigour_active=obs.get("rigour_active", False),
 
             # Inventory
-            super_combat_doses=obs.get("super_combat_doses", 0),
+            bastion_doses=obs.get("bastion_doses", 0),
             sara_brew_doses=obs.get("sara_brew_doses", 0),
             super_restore_doses=obs.get("super_restore_doses", 0),
 
             # Jad state
-            jad_hp=obs["jad_hp"],
-            jad_attack=obs["jad_attack"],
-            jad_x=obs.get("jad_x", 0),
-            jad_y=obs.get("jad_y", 0),
+            jads=jads,
 
             # Healer state
+            healers=healers,
             healers_spawned=obs.get("healers_spawned", False),
-            healer_1_hp=obs.get("healer_1_hp", 0),
-            healer_1_x=obs.get("healer_1_x", 0),
-            healer_1_y=obs.get("healer_1_y", 0),
-            healer_1_aggro=obs.get("healer_1_aggro", 0),
-            healer_2_hp=obs.get("healer_2_hp", 0),
-            healer_2_x=obs.get("healer_2_x", 0),
-            healer_2_y=obs.get("healer_2_y", 0),
-            healer_2_aggro=obs.get("healer_2_aggro", 0),
-            healer_3_hp=obs.get("healer_3_hp", 0),
-            healer_3_x=obs.get("healer_3_x", 0),
-            healer_3_y=obs.get("healer_3_y", 0),
-            healer_3_aggro=obs.get("healer_3_aggro", 0),
 
             # Starting doses for normalization
-            starting_super_combat_doses=obs.get("starting_super_combat_doses", 4),
+            starting_bastion_doses=obs.get("starting_bastion_doses", 4),
             starting_sara_brew_doses=obs.get("starting_sara_brew_doses", 4),
             starting_super_restore_doses=obs.get("starting_super_restore_doses", 4),
         )
