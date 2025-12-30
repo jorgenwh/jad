@@ -184,7 +184,7 @@ def reward_multijad(
         return reward
 
     # Prayer switching - only on landing tick
-    reward += prayer_landing_reward(obs, prev_obs, correct=2.5, wrong=-7.5)
+    reward += prayer_landing_reward(obs, prev_obs, correct=1.25, wrong=-3.75)
 
     # Penalty for not being in combat
     if obs.player_aggro == 0:

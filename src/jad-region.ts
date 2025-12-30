@@ -167,9 +167,13 @@ export class JadRegion extends Region {
 
   /**
    * Get healer at specific Jad and healer index.
-   * Returns null if not spawned or dead.
+   * Returns null if not spawned, dead, or parent Jad is dead.
    */
   getHealer(jadIndex: number, healerIndex: number): YtHurKot | null {
+    // If the parent Jad is dead, healers despawn
+    const jad = this._jads[jadIndex];
+    if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) return null;
+
     const healerTuple = this._healers.get(jadIndex);
     if (!healerTuple) return null;
     if (healerIndex < 0 || healerIndex >= 3) return null;
@@ -213,12 +217,17 @@ export class JadRegion extends Region {
 
   /**
    * Get all alive healers in the region (for backwards compatibility).
+   * Excludes healers whose Jads are dead.
    */
   get healers(): YtHurKot[] {
     const result: YtHurKot[] = [];
-    for (const [, healerTuple] of this._healers) {
+    for (const [jadIndex, healerTuple] of this._healers) {
+      // Skip healers if their Jad is dead
+      const jad = this._jads[jadIndex];
+      if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) continue;
+
       for (const healer of healerTuple) {
-        if (healer && !healer.isDying()) {
+        if (healer && !healer.isDying() && healer.currentStats.hitpoint > 0) {
           result.push(healer);
         }
       }
