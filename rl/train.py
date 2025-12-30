@@ -138,9 +138,15 @@ def train(
 
                 # Logging
                 if episode_count % log_interval == 0:
-                    avg_raw_reward = np.mean(episode_raw_rewards[-log_interval:])
-                    avg_norm_reward = np.mean(episode_norm_rewards[-log_interval:])
-                    avg_length = np.mean(episode_lengths[-log_interval:])
+                    recent_raw = episode_raw_rewards[-log_interval:]
+                    recent_norm = episode_norm_rewards[-log_interval:]
+                    recent_len = episode_lengths[-log_interval:]
+
+                    avg_raw_reward = np.mean(recent_raw)
+                    avg_norm_reward = np.mean(recent_norm)
+                    avg_length = np.mean(recent_len)
+                    min_raw, max_raw = np.min(recent_raw), np.max(recent_raw)
+                    min_len, max_len = int(np.min(recent_len)), int(np.max(recent_len))
 
                     # Check if this is a new best (using raw reward for interpretability)
                     is_best = avg_raw_reward > best_avg_reward
@@ -155,9 +161,9 @@ def train(
                     start_ep = episode_count + 1 - log_interval
                     print(
                         f"Episodes {start_ep}-{episode_count} | "
-                        f"Raw: {avg_raw_reward:.1f} | "
+                        f"Raw: {avg_raw_reward:.1f} ({min_raw:.0f}/{max_raw:.0f}) | "
                         f"Norm: {avg_norm_reward:.2f} | "
-                        f"Len: {avg_length:.0f} | "
+                        f"Len: {avg_length:.0f} ({min_len}/{max_len}) | "
                         f"Kills: {interval_wins}/{log_interval} | "
                         f"Steps: {total_steps:,} | "
                         f"Time: {elapsed_str}"
@@ -179,11 +185,11 @@ def train(
     finally:
         env.close()
 
-    actual_episodes = len(episode_raw_rewards)
-    win_rate = (total_wins / actual_episodes * 100) if actual_episodes > 0 else 0
-    print(f"\nTraining complete: {total_wins}/{actual_episodes} wins ({win_rate:.1f}%)")
-    print(f"Best avg raw reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
-    return agent, episode_raw_rewards
+    # actual_episodes = len(episode_raw_rewards)
+    # win_rate = (total_wins / actual_episodes * 100) if actual_episodes > 0 else 0
+    # print(f"\nTraining complete: {total_wins}/{actual_episodes} wins ({win_rate:.1f}%)")
+    # print(f"Best avg raw reward: {best_avg_reward:.1f} (saved to {checkpoint_path / 'best.pt'})")
+    # return agent, episode_raw_rewards
 
 
 def main():

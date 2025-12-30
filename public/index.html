@@ -38,7 +38,11 @@
 <body>
   <canvas id="world" onselectstart="return false" oncontextmenu="return false"></canvas>
   <div id="right_panel">
-    <div id="sidebar_content"></div>
+    <div id="sidebar_content">
+      <div id="tick_counter" style="font-size: 18px; text-align: center; padding: 10px 0;">
+        Tick: <span id="tick_count">0</span>
+      </div>
+    </div>
   </div>
   <script src="bundle.js"></script>
 </body>

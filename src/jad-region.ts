@@ -53,6 +53,18 @@ export class JadRegion extends Region {
     }
   }
 
+  postTick() {
+    super.postTick();
+    this.updateTickCounter();
+  }
+
+  private updateTickCounter() {
+    const tickCountElement = document.getElementById('tick_count');
+    if (tickCountElement && this.world) {
+      tickCountElement.innerText = String(this.world.globalTickCounter);
+    }
+  }
+
   drawWorldBackground(context: OffscreenCanvasRenderingContext2D, scale: number) {
     // Draw a checkerboard pattern for the floor
     for (let x = 0; x < this.width; x++) {

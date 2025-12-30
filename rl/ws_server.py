@@ -159,9 +159,9 @@ class AgentServer:
             )
             return int(action)
         else:
-            # Custom model
+            # Custom model - use deterministic action selection
             with torch.no_grad():
-                action, _, _ = self.agent.select_action(obs_array)
+                action, _, _ = self.agent.select_action(obs_array, deterministic=True)
             return action
 
     def reset_state(self):

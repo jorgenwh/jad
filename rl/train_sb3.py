@@ -95,13 +95,15 @@ class EpisodeStatsCallback(BaseCallback):
             return
 
         # Calculate stats for the last log_interval episodes
-        recent_raw_rewards = self.episode_raw_rewards[-self.log_interval :]
-        recent_norm_rewards = self.episode_norm_rewards[-self.log_interval :]
-        recent_lengths = self.episode_lengths[-self.log_interval :]
+        recent_raw = self.episode_raw_rewards[-self.log_interval :]
+        recent_norm = self.episode_norm_rewards[-self.log_interval :]
+        recent_len = self.episode_lengths[-self.log_interval :]
 
-        mean_raw_reward = sum(recent_raw_rewards) / len(recent_raw_rewards)
-        mean_norm_reward = sum(recent_norm_rewards) / len(recent_norm_rewards)
-        mean_length = sum(recent_lengths) / len(recent_lengths)
+        mean_raw_reward = sum(recent_raw) / len(recent_raw)
+        mean_norm_reward = sum(recent_norm) / len(recent_norm)
+        mean_length = sum(recent_len) / len(recent_len)
+        min_raw, max_raw = min(recent_raw), max(recent_raw)
+        min_len, max_len = int(min(recent_len)), int(max(recent_len))
         kills = self.episode_kills
 
         # Print stats
@@ -110,9 +112,9 @@ class EpisodeStatsCallback(BaseCallback):
         start_ep = self.total_episodes - self.log_interval + 1
         print(
             f"Episodes {start_ep}-{self.total_episodes} | "
-            f"Raw: {mean_raw_reward:.1f} | "
+            f"Raw: {mean_raw_reward:.1f} ({min_raw:.0f}/{max_raw:.0f}) | "
             f"Norm: {mean_norm_reward:.2f} | "
-            f"Len: {mean_length:.0f} | "
+            f"Len: {mean_length:.0f} ({min_len}/{max_len}) | "
             f"Kills: {kills}/{self.log_interval} | "
             f"Steps: {self.num_timesteps:,} | "
             f"Time: {elapsed_str}"
@@ -255,13 +257,13 @@ def train(
         print("\nTraining interrupted by user")
 
     # Save final model and normalizer
-    final_path = checkpoint_path / "final_sb3"
-    model.save(str(final_path))
-    final_normalizer_path = checkpoint_path / "normalizer_final_sb3.npz"
-    env.save_normalizer(str(final_normalizer_path))
-    print(f"\nSaved final model: {final_path}")
-    print(f"Saved final normalizer: {final_normalizer_path}")
-    print(f"Best mean reward: {callback.best_mean_reward:.1f}")
+    # final_path = checkpoint_path / "final_sb3"
+    # model.save(str(final_path))
+    # final_normalizer_path = checkpoint_path / "normalizer_final_sb3.npz"
+    # env.save_normalizer(str(final_normalizer_path))
+    # print(f"\nSaved final model: {final_path}")
+    # print(f"Saved final normalizer: {final_normalizer_path}")
+    # print(f"Best mean reward: {callback.best_mean_reward:.1f}")
 
     env.close()
     return model

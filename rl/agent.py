@@ -102,12 +102,15 @@ class PPOAgent:
         """Reset LSTM hidden state for new episode."""
         self.hidden = self.model.init_hidden(batch_size=1)
 
-    def select_action(self, obs: np.ndarray) -> tuple[int, torch.Tensor, torch.Tensor]:
+    def select_action(
+        self, obs: np.ndarray, deterministic: bool = False
+    ) -> tuple[int, torch.Tensor, torch.Tensor]:
         """
         Select action given observation.
 
         Args:
             obs: Pre-normalized observation from SelectiveVecNormalize wrapper
+            deterministic: If True, return argmax action instead of sampling
 
         Returns:
             action: Selected action
@@ -118,7 +121,7 @@ class PPOAgent:
 
         with torch.no_grad():
             action, log_prob, value, self.hidden = self.model.get_action(
-                obs_tensor, self.hidden
+                obs_tensor, self.hidden, deterministic=deterministic
             )
 
         return action, log_prob, value
