@@ -9,7 +9,7 @@
 // Must happen before ANY other code runs
 const _stderr = process.stderr;
 const writeToStderr = (...args: unknown[]) => {
-  _stderr.write(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') + '\n');
+    _stderr.write(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') + '\n');
 };
 console.log = writeToStderr;
 console.info = writeToStderr;
@@ -22,20 +22,20 @@ const g = global as unknown as Record<string, unknown>;
 g.self = g;
 g.window = g;
 g.document = {
-  createElement: () => ({}),
-  getElementById: () => null,
-  querySelector: () => null,
-  querySelectorAll: () => [],
-  body: { appendChild: () => {}, removeChild: () => {} },
-  addEventListener: () => {},
-  removeEventListener: () => {},
+    createElement: () => ({}),
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    body: { appendChild: () => {}, removeChild: () => {} },
+    addEventListener: () => {},
+    removeEventListener: () => {},
 };
 const storageData: Record<string, string> = {};
 g.localStorage = {
-  getItem: (key: string) => storageData[key] ?? null,
-  setItem: (key: string, val: string) => { storageData[key] = val; },
-  removeItem: (key: string) => { delete storageData[key]; },
-  clear: () => { Object.keys(storageData).forEach(k => delete storageData[k]); },
+    getItem: (key: string) => storageData[key] ?? null,
+    setItem: (key: string, val: string) => { storageData[key] = val; },
+    removeItem: (key: string) => { delete storageData[key]; },
+    clear: () => { Object.keys(storageData).forEach(k => delete storageData[k]); },
 };
 g.requestAnimationFrame = () => 0;
 g.cancelAnimationFrame = () => {};
