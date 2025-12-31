@@ -34,7 +34,7 @@ const agentMode = urlParams.get('agent') === 'true';
 
 if (agentMode) {
     console.log('Agent mode enabled - will connect to WebSocket server');
-    agentController = new AgentController(player, region);
+    agentController = new AgentController(player, region, config);
 }
 
 let imagesReady = false;

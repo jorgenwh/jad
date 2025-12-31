@@ -26,8 +26,8 @@ try {
 }
 
 /**
- * Healing weapon used by YtHurKot to heal Jad.
- * Deals negative damage (healing) of 0-19 HP per hit.
+ * Healing weapon used by YtHurKot to heal Jad
+ * Deals negative damage (healing) of 0-19 HP per hit
  */
 class HealWeapon extends Weapon {
     calculateHitDelay(distance: number) {
@@ -39,23 +39,19 @@ class HealWeapon extends Weapon {
     }
 
     attack(from: Unit, to: Unit, bonuses: AttackBonuses = {}, options: ProjectileOptions): boolean {
-        // Negative damage = healing
         this.damage = -Math.floor(Random.get() * 20);
         this.registerProjectile(from, to, bonuses, options);
         return true;
     }
 }
 
-/**
- * Jad's healer mob. Spawns when Jad reaches 50% HP.
- * Heals Jad until attacked by the player, then retaliates.
- */
 export class YtHurKot extends Mob {
     myJad: Unit;
 
     constructor(region: Region, location: Location, options: UnitOptions) {
         super(region, location, options);
         this.myJad = this.aggro as Unit;
+        this.autoRetaliate = true;
     }
 
     mobName() {
@@ -128,7 +124,10 @@ export class YtHurKot extends Mob {
         return 4;
     }
 
-    // Heal Jad if targeting Jad, attack player if targeting player
+    /**
+     * Heal Jad with HealWeapon if targeting Jad
+     * Use crush with MeleeWeapon if targeting player
+     */
     attackStyleForNewAttack() {
         return this.aggro?.type === UnitTypes.PLAYER ? 'crush' : 'heal';
     }
@@ -146,7 +145,7 @@ export class YtHurKot extends Mob {
     }
 
     get color() {
-        return '#ACFF56'; // Light green color for healers
+        return '#ACFF56';
     }
 
     attackAnimation(tickPercent: number, context: OffscreenCanvasRenderingContext2D) {

@@ -17,13 +17,10 @@ export class AgentController {
     private jadRegion: JadRegion;
     private config: JadConfig;
 
-    constructor(player: Player, jadRegion: JadRegion) {
+    constructor(player: Player, jadRegion: JadRegion, config: JadConfig) {
         this.player = player;
         this.jadRegion = jadRegion;
-        this.config = {
-            jadCount: jadRegion.jadCount,
-            healersPerJad: jadRegion.healersPerJad,
-        };
+        this.config = config;
 
         this.ws = new AgentWebSocket();
         this.ui = new AgentUI();
