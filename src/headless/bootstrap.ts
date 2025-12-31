@@ -1,6 +1,7 @@
 /**
  * Bootstrap file that sets up mocks before anything else loads.
  * This must be the entry point - it sets up globals then requires main.
+ * Dreamt up by Claude
  *
  * Uses require() instead of import to control execution order.
  */

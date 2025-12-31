@@ -1,27 +1,14 @@
-/**
- * Headless entry point for the Jad RL environment.
- * Runs the simulation without browser rendering.
- *
- * Configuration via environment variables:
- * - JAD_COUNT: Number of Jads (1-6, default: 1)
- * - HEALERS_PER_JAD: Number of healers per Jad (0-5, default: 3)
- */
-
 // Must import mocks FIRST before any osrs-sdk imports
 import './mocks';
 
 import * as readline from 'readline';
-import { JadRegion, JadConfig, getActionCount } from '../core';
+import { JadRegion, JadConfig } from '../core';
 import { HeadlessEnv } from './env';
 
-/**
- * Parse configuration from environment variables.
- */
 function parseConfig(): JadConfig {
     const jadCount = parseInt(process.env.JAD_COUNT || '1', 10);
     const healersPerJad = parseInt(process.env.HEALERS_PER_JAD || '3', 10);
 
-    // Validate
     if (jadCount < 1 || jadCount > 6) {
         throw new Error(`JAD_COUNT must be 1-6, got ${jadCount}`);
     }
@@ -32,12 +19,7 @@ function parseConfig(): JadConfig {
     return { jadCount, healersPerJad };
 }
 
-// Parse config from environment
 const config = parseConfig();
-console.error(`Jad config: ${config.jadCount} Jad(s), ${config.healersPerJad} healers per Jad`);
-console.error(`Action count: ${getActionCount(config)}`);
-
-// Create environment with config
 const env = new HeadlessEnv((cfg: JadConfig) => new JadRegion(cfg), config);
 
 // Set up stdio protocol
@@ -92,6 +74,3 @@ process.on('SIGTERM', () => {
     rl.close();
     process.exit(0);
 });
-
-// Signal that we're ready
-console.error('Headless Jad environment ready');

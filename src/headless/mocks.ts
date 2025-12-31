@@ -1,6 +1,7 @@
 /**
  * Browser API mocks for running osrs-sdk in Node.js headless mode.
  * This file must be imported BEFORE any osrs-sdk imports.
+ * Dreamt up by Claude
  */
 
 // Mock OffscreenCanvas

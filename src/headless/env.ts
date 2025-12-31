@@ -1,14 +1,8 @@
-/**
- * Headless environment wrapper for RL training.
- * Supports 1-6 Jads with per-Jad healers.
- */
-
 import { World, Region, Player, Settings, Trainer } from 'osrs-sdk';
 import {
     JadRegion,
     JadConfig,
     DEFAULT_CONFIG,
-    getActionCount,
     JadObservation,
     JadAttackState,
     countPotionDoses,
@@ -18,20 +12,12 @@ import {
     executeAction,
 } from '../core';
 
-// Initialize settings from storage (uses mock localStorage)
+// (mock) initialize settings from storage
 Settings.readFromStorage();
-
-// Re-export for convenience
-export { getActionCount };
-export type { JadObservation };
 
 export interface StepResult {
     observation: JadObservation;
     terminated: boolean;
-}
-
-export interface ResetResult {
-    observation: JadObservation;
 }
 
 export class HeadlessEnv {
@@ -82,7 +68,7 @@ export class HeadlessEnv {
         };
     }
 
-    reset(): ResetResult {
+    reset(): StepResult {
         // Clear and recreate
         this.world = new World();
         this.region = this.createRegion(this.config);
@@ -90,6 +76,7 @@ export class HeadlessEnv {
 
         return {
             observation: this.getObservation(),
+            terminated: false,
         };
     }
 
