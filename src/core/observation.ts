@@ -1,8 +1,3 @@
-/**
- * Shared observation building logic for the Jad simulation.
- * Used by both browser agent-controller and headless env.
- */
-
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion, HealerAggro } from './jad-region';
 import { JadConfig, JadObservation, JadState, HealerState, JadAttackState } from './types';

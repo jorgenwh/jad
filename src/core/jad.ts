@@ -236,6 +236,8 @@ export class Jad extends Mob {
 
         this.hasProccedHealers = true;
 
+        const healers: YtHurKot[] = [];
+
         for (let i = 0; i < this.healerCount; i++) {
             // Find a valid spawn position around Jad
             let xOff: number;
@@ -260,10 +262,10 @@ export class Jad extends Mob {
                 { aggro: this },
             );
             this.region.addMob(healer);
-
-            // Register healer with region for stable index tracking (jadIndex, healerIndex)
-            (this.region as JadRegion).registerHealer(this.jadIndex, i, healer);
+            healers.push(healer);
         }
+
+        (this.region as JadRegion).registerHealers(this.jadIndex, healers);
     }
 
     create3dModel() {

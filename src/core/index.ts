@@ -1,7 +1,3 @@
-/**
- * Core simulation module - shared between browser and headless.
- */
-
 // Types
 export * from './types';
 

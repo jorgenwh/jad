@@ -1,15 +1,6 @@
-/**
- * Shared types for the Jad simulation.
- */
-
-/**
- * Configuration for multi-Jad environment.
- */
 export interface JadConfig {
-    /** Number of Jads (1-6) */
-    jadCount: number;
-    /** Number of healers per Jad (default: 3) */
-    healersPerJad: number;
+    jadCount: number; // 1-6, (default: 1)
+    healersPerJad: number; // 0-5, (default: 3)
 }
 
 export const DEFAULT_CONFIG: JadConfig = {

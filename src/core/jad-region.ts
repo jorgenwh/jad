@@ -84,16 +84,10 @@ function shuffleArray<T>(array: T[]): T[] {
     return array;
 }
 
-// Healer array type (3 healers per Jad)
-type HealerTuple = [YtHurKot | null, YtHurKot | null, YtHurKot | null];
-
 export class JadRegion extends Region {
     private config: JadConfig;
     private _jads: Jad[] = [];
-
-    // Per-Jad healer tracking: Map<jadIndex, [healer0, healer1, healer2]>
-    private _healers: Map<number, HealerTuple> = new Map();
-    private _healersSpawnedPerJad: Map<number, boolean> = new Map();
+    private _healers: Map<number, YtHurKot[]> = new Map();
 
     constructor(config: JadConfig = DEFAULT_CONFIG) {
         super();
@@ -113,55 +107,69 @@ export class JadRegion extends Region {
     }
 
     getJad(index: number): Jad | null {
-        if (index < 0 || index >= this._jads.length) return null;
+        if (index < 0 || index >= this._jads.length) {
+            return null;
+        }
+
         const jad = this._jads[index];
+        if (!jad) {
+            console.warn(`Jad ${index} is null`);
+            return null;
+        }
+
         // Check both isDying and HP to handle timing gap between HP=0 and death animation
-        if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) return null;
+        if (jad.isDying() || jad.currentStats.hitpoint <= 0) {
+            return null;
+        }
+
         return jad;
     }
 
-    get jads(): Jad[] {
-        return this._jads.filter((j) => !j.isDying());
-    }
-
-    registerHealer(jadIndex: number, healerIndex: number, healer: YtHurKot): void {
+    registerHealers(jadIndex: number, healers: YtHurKot[]): void {
         if (jadIndex < 0 || jadIndex >= this.config.jadCount) {
-            console.warn(`Attempted to register healer for invalid Jad index ${jadIndex}`);
+            console.warn(`Invalid Jad index ${jadIndex}`);
             return;
         }
-        if (healerIndex < 0 || healerIndex >= this.config.healersPerJad) {
-            console.warn(`Attempted to register healer for invalid healer index ${healerIndex}`);
-            return;
-        }
-
-        let healerTuple = this._healers.get(jadIndex);
-        if (!healerTuple) {
-            healerTuple = [null, null, null];
-            this._healers.set(jadIndex, healerTuple);
-        }
-
-        healerTuple[healerIndex] = healer;
-        this._healersSpawnedPerJad.set(jadIndex, true);
+        this._healers.set(jadIndex, healers);
     }
 
     getHealer(jadIndex: number, healerIndex: number): YtHurKot | null {
-        // If the parent Jad is dead, healers despawn
         const jad = this._jads[jadIndex];
-        if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) return null;
+        if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) {
+            console.warn(`Jad ${jadIndex} is dead; healers are despawned`);
+            return null;
+        }
 
-        const healerTuple = this._healers.get(jadIndex);
-        if (!healerTuple) return null;
-        if (healerIndex < 0 || healerIndex >= 3) return null;
+        const healers = this._healers.get(jadIndex);
+        if (!healers) {
+            console.warn(`Tried accessing healer but no healers registered for Jad ${jadIndex}`);
+            return null;
+        }
 
-        const healer = healerTuple[healerIndex];
+        if (healerIndex < 0 || healerIndex >= healers.length) {
+            console.warn(`Invalid healer index ${healerIndex} for Jad ${jadIndex}`);
+            return null;
+        }
+
+        const healer = healers[healerIndex];
+        if (!healer) {
+            console.warn(`Healer ${healerIndex} for Jad ${jadIndex} is null`);
+            return null;
+        }
+
         // Check both isDying and HP to handle timing gap between HP=0 and death animation
-        if (healer && (healer.isDying() || healer.currentStats.hitpoint <= 0)) return null;
+        if (healer.isDying() || healer.currentStats.hitpoint <= 0) {
+            return null;
+        }
+
         return healer;
     }
 
     getHealerAggro(jadIndex: number, healerIndex: number): HealerAggro {
         const healer = this.getHealer(jadIndex, healerIndex);
-        if (!healer) return HealerAggro.NOT_PRESENT;
+        if (!healer) {
+            return HealerAggro.NOT_PRESENT;
+        }
 
         const aggro = healer.aggro;
         if (aggro && aggro.type === UnitTypes.PLAYER) {
