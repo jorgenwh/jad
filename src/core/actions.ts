@@ -1,46 +1,51 @@
-/**
- * Shared action execution logic for the Jad simulation.
- * Used by both browser agent-controller and headless env.
- */
-
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
 import { JadConfig } from './types';
 
-/**
- * Toggle a prayer on/off.
- */
 export function togglePrayer(player: Player, prayerName: string): void {
     const prayerController = player.prayerController;
-    if (!prayerController) return;
+    if (!prayerController) {
+        return;
+    }
 
     const targetPrayer = prayerController.findPrayerByName(prayerName);
-    if (targetPrayer) {
-        if (targetPrayer.isActive) {
-            targetPrayer.deactivate();
-        } else {
-            // Can't activate prayers with 0 prayer points
-            if ((player.currentStats?.prayer ?? 0) > 0) {
-                targetPrayer.activate(player);
-            }
+    if (!targetPrayer) {
+        return;
+    }
+
+    if (targetPrayer.isActive) {
+        targetPrayer.deactivate();
+    } else {
+        // Can't activate prayers with 0 prayer points
+        if ((player.currentStats?.prayer ?? 0) > 0) {
+            targetPrayer.activate(player);
         }
     }
 }
 
-/**
- * Drink a potion of the specified type.
- */
 export function drinkPotion(player: Player, potionType: string): void {
-    if (!player || !player.inventory) return;
+    if (!player || !player.inventory) {
+        return;
+    }
 
     for (const item of player.inventory) {
-        if (item && item instanceof Potion && item.doses > 0) {
-            const itemName = item.itemName?.toString().toLowerCase() || '';
-            if (itemName.includes(potionType)) {
-                item.inventoryLeftClick(player);
-                break;
-            }
+        if (!item) {
+            continue;
         }
+        if (!(item instanceof Potion)) {
+            continue;
+        }
+        if (item.doses <= 0) {
+            continue;
+        }
+
+        const itemName = item.itemName?.toString().toLowerCase() || '';
+        if (!itemName.includes(potionType)) {
+            continue;
+        }
+
+        item.inventoryLeftClick(player);
+        break;
     }
 }
 

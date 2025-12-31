@@ -1,4 +1,4 @@
-import { World, Region, Player, Settings, Trainer } from 'osrs-sdk';
+import { World, Region, Player, Trainer } from 'osrs-sdk';
 import {
     JadRegion,
     JadConfig,
@@ -10,13 +10,21 @@ import {
     updateJadAttackTracking,
     initializeAttackStates,
     executeAction,
+    computeReward,
+    TerminationState,
 } from '../core';
 
-// (mock) initialize settings from storage
-Settings.readFromStorage();
+export interface EnvConfig {
+    rewardFunc?: string;
+}
+
+const DEFAULT_ENV_CONFIG: EnvConfig = {
+    rewardFunc: 'default',
+};
 
 export interface StepResult {
     observation: JadObservation;
+    reward: number;
     terminated: boolean;
 }
 
@@ -24,8 +32,9 @@ export class HeadlessEnv {
     private world: World;
     private region: Region;
     private player!: Player;
-    private config: JadConfig;
-    private createRegion: (config: JadConfig) => Region;
+    private jadConfig: JadConfig;
+    private envConfig: EnvConfig;
+    private createRegionFunc: (config: JadConfig) => Region;
 
     // Track attack state per Jad
     private jadAttackStates: JadAttackState[] = [];
@@ -33,30 +42,38 @@ export class HeadlessEnv {
     // Track starting potion doses for normalization
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
 
-    constructor(createRegion: (config: JadConfig) => Region, config: JadConfig = DEFAULT_CONFIG) {
-        this.config = config;
-        this.createRegion = createRegion;
+    // Track for reward computation
+    private prevObservation: JadObservation | null = null;
+    private episodeLength: number = 0;
+
+    constructor(
+        createRegionFunc: (config: JadConfig) => Region,
+        jadConfig: JadConfig = DEFAULT_CONFIG,
+        envConfig: EnvConfig = DEFAULT_ENV_CONFIG
+    ) {
+        this.jadConfig = jadConfig;
+        this.envConfig = envConfig;
+        this.createRegionFunc = createRegionFunc;
+
         this.world = new World();
-        this.region = createRegion(config);
-        this.initializeRegion();
+        this.region = createRegionFunc(jadConfig);
+        this.initialize();
     }
 
-    private initializeRegion(): void {
+    private initialize(): void {
         this.region.world = this.world;
         this.world.addRegion(this.region);
+        Trainer.setPlayer(this.player);
 
-        // Initialize region and get player
         const result = (this.region as { initialiseRegion(): { player: Player } }).initialiseRegion();
         this.player = result.player;
 
-        // Set player in Trainer (used by osrs-sdk internals)
-        Trainer.setPlayer(this.player);
+        this.jadAttackStates = initializeAttackStates(this.region as JadRegion, this.jadConfig);
 
-        // Initialize per-Jad attack tracking
-        this.jadAttackStates = initializeAttackStates(this.region as JadRegion, this.config);
-
-        // Capture starting potion doses for normalization
         this.captureStartingDoses();
+
+        this.prevObservation = null;
+        this.episodeLength = 0;
     }
 
     private captureStartingDoses(): void {
@@ -69,54 +86,86 @@ export class HeadlessEnv {
     }
 
     reset(): StepResult {
-        // Clear and recreate
         this.world = new World();
-        this.region = this.createRegion(this.config);
-        this.initializeRegion();
+        this.region = this.createRegionFunc(this.jadConfig);
+        this.initialize();
+
+        const observation = this.getObservation();
 
         return {
-            observation: this.getObservation(),
+            observation,
+            reward: 0,
             terminated: false,
         };
     }
 
     step(action: number): StepResult {
+        // Store previous observation for reward computation
+        this.prevObservation = this.getObservation();
+
         // Execute action before tick
-        executeAction(action, this.player, this.region as JadRegion, this.config);
+        executeAction(action, this.player, this.region as JadRegion, this.jadConfig);
 
         // Update Jad attack tracking before tick
-        updateJadAttackTracking(this.region as JadRegion, this.config, this.jadAttackStates);
+        updateJadAttackTracking(this.region as JadRegion, this.jadConfig, this.jadAttackStates);
 
         // Advance simulation by one tick
         this.world.tickWorld(1);
 
+        // Increment episode length
+        this.episodeLength++;
+
         // Get observation after tick
         const observation = this.getObservation();
 
-        // Check termination - player dead or ALL Jads dead
+        // Determine termination state
+        const termination = this.getTerminationState();
+
+        // Compute reward
+        const reward = computeReward(
+            observation,
+            this.prevObservation,
+            termination,
+            this.episodeLength,
+            this.envConfig.rewardFunc
+        );
+
+        return {
+            observation,
+            reward,
+            terminated: termination === TerminationState.PLAYER_DIED || termination === TerminationState.JAD_KILLED,
+        };
+    }
+
+    private getTerminationState(): TerminationState {
+        // Check player death
         const playerDead = this.player.dying > 0 || this.player.currentStats.hitpoint <= 0;
+        if (playerDead) {
+            return TerminationState.PLAYER_DIED;
+        }
+
+        // Check if ALL Jads are dead
         const jadRegion = this.region as JadRegion;
         let allJadsDead = true;
-        for (let i = 0; i < this.config.jadCount; i++) {
+        for (let i = 0; i < this.jadConfig.jadCount; i++) {
             const jad = jadRegion.getJad(i);
             if (jad && jad.currentStats.hitpoint > 0 && jad.dying === -1) {
                 allJadsDead = false;
                 break;
             }
         }
-        const terminated = playerDead || allJadsDead;
+        if (allJadsDead) {
+            return TerminationState.JAD_KILLED;
+        }
 
-        return {
-            observation,
-            terminated,
-        };
+        return TerminationState.ONGOING;
     }
 
     private getObservation(): JadObservation {
         return buildObservation(
             this.player,
             this.region as JadRegion,
-            this.config,
+            this.jadConfig,
             this.jadAttackStates,
             this.startingDoses
         );

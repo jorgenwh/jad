@@ -25,12 +25,19 @@ export interface JadState {
     alive: boolean;
 }
 
+// Healer aggro state
+export enum HealerAggro {
+    NOT_PRESENT = 0,
+    JAD = 1,
+    PLAYER = 2,
+}
+
 // Single healer state in observation
 export interface HealerState {
     hp: number;
     x: number;
     y: number;
-    aggro: number;  // HealerAggro enum: 0=not_present, 1=jad, 2=player
+    aggro: HealerAggro;
 }
 
 export interface JadObservation {

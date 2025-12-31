@@ -4,13 +4,7 @@ import { InvisibleMovementBlocker } from 'osrs-sdk';
 import { getRangedLoadout } from './loadout';
 import { Jad } from './jad';
 import { YtHurKot } from './healer';
-import { JadConfig, DEFAULT_CONFIG } from './types';
-
-export enum HealerAggro {
-    NOT_PRESENT = 0,
-    JAD = 1,
-    PLAYER = 2,
-}
+import { JadConfig, DEFAULT_CONFIG, HealerAggro } from './types';
 
 const REGION_WIDTH = 27;
 const REGION_HEIGHT = 27;
@@ -127,7 +121,6 @@ export class JadRegion extends Region {
 
     registerHealers(jadIndex: number, healers: YtHurKot[]): void {
         if (jadIndex < 0 || jadIndex >= this.config.jadCount) {
-            console.warn(`Invalid Jad index ${jadIndex}`);
             return;
         }
         this._healers.set(jadIndex, healers);
@@ -136,24 +129,20 @@ export class JadRegion extends Region {
     getHealer(jadIndex: number, healerIndex: number): YtHurKot | null {
         const jad = this._jads[jadIndex];
         if (jad && (jad.isDying() || jad.currentStats.hitpoint <= 0)) {
-            console.warn(`Jad ${jadIndex} is dead; healers are despawned`);
             return null;
         }
 
         const healers = this._healers.get(jadIndex);
         if (!healers) {
-            console.warn(`Tried accessing healer but no healers registered for Jad ${jadIndex}`);
             return null;
         }
 
         if (healerIndex < 0 || healerIndex >= healers.length) {
-            console.warn(`Invalid healer index ${healerIndex} for Jad ${jadIndex}`);
             return null;
         }
 
         const healer = healers[healerIndex];
         if (!healer) {
-            console.warn(`Healer ${healerIndex} for Jad ${jadIndex} is null`);
             return null;
         }
 

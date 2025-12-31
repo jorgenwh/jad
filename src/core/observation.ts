@@ -1,6 +1,6 @@
 import { Player, Potion } from 'osrs-sdk';
-import { JadRegion, HealerAggro } from './jad-region';
-import { JadConfig, JadObservation, JadState, HealerState, JadAttackState } from './types';
+import { JadRegion } from './jad-region';
+import { JadConfig, JadObservation, JadState, HealerState, JadAttackState, HealerAggro } from './types';
 
 /**
  * Count potion doses in player inventory.
@@ -253,9 +253,6 @@ export function buildObservation(
     };
 }
 
-/**
- * Initialize attack tracking state for all Jads.
- */
 export function initializeAttackStates(jadRegion: JadRegion, config: JadConfig): JadAttackState[] {
     const states: JadAttackState[] = [];
     for (let i = 0; i < config.jadCount; i++) {

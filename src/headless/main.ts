@@ -2,10 +2,14 @@
 import './mocks';
 
 import * as readline from 'readline';
+import { Settings } from 'osrs-sdk';
 import { JadRegion, JadConfig } from '../core';
-import { HeadlessEnv } from './env';
+import { HeadlessEnv, EnvConfig, StepResult } from './env';
 
-function parseConfig(): JadConfig {
+// Initialize settings from (mock) storage
+Settings.readFromStorage();
+
+function parseJadConfig(): JadConfig {
     const jadCount = parseInt(process.env.JAD_COUNT || '1', 10);
     const healersPerJad = parseInt(process.env.HEALERS_PER_JAD || '3', 10);
 
@@ -19,8 +23,14 @@ function parseConfig(): JadConfig {
     return { jadCount, healersPerJad };
 }
 
-const config = parseConfig();
-const env = new HeadlessEnv((cfg: JadConfig) => new JadRegion(cfg), config);
+function parseEnvConfig(): EnvConfig {
+    const rewardFunc = process.env.REWARD_FUNC || 'default';
+    return { rewardFunc };
+}
+
+const jadConfig = parseJadConfig();
+const envConfig = parseEnvConfig();
+const env = new HeadlessEnv((cfg: JadConfig) => new JadRegion(cfg), jadConfig, envConfig);
 
 // Set up stdio protocol
 const rl = readline.createInterface({
@@ -37,7 +47,7 @@ function output(data: unknown): void {
 rl.on('line', (line: string) => {
     try {
         const msg = JSON.parse(line);
-        let result: unknown;
+        let result: StepResult;
 
         switch (msg.command) {
             case 'reset':
@@ -54,7 +64,8 @@ rl.on('line', (line: string) => {
                 break;
 
             default:
-                result = { error: `Unknown command: ${msg.command}` };
+                output({ error: `Unknown command: ${msg.command}` });
+                return;
         }
 
         output(result);
