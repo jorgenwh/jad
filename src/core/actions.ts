@@ -49,6 +49,24 @@ export function drinkPotion(player: Player, potionType: string): void {
     }
 }
 
+function attackJad(player: Player, jadRegion: JadRegion, jadIndex: number): void {
+    const jad = jadRegion.getJad(jadIndex);
+    if (!jad) {
+        // Jad not present or dead; no action
+        return;
+    }
+    player.setAggro(jad);
+}
+
+function attackHealer(player: Player, jadRegion: JadRegion, jadIndex: number, healerIndex: number): void {
+    const healer = jadRegion.getHealer(jadIndex, healerIndex);
+    if (!healer) {
+        // Healer not present or dead; no action
+        return;
+    }
+    player.setAggro(healer);
+}
+
 /**
  * Execute action based on dynamic action space.
  *
@@ -71,82 +89,50 @@ export function executeAction(
     jadRegion: JadRegion,
     config: JadConfig
 ): void {
-    // Action 0: DO_NOTHING
     if (action === 0) {
         return;
     }
 
+    let relativeAction = action - 1;
+
     const numJads = config.jadCount;
     const healersPerJad = config.healersPerJad;
-    const totalHealers = numJads * healersPerJad;
+    const numHealers = numJads * healersPerJad;
 
-    // Actions 1..N: AGGRO_JAD_1 through AGGRO_JAD_N
-    if (action >= 1 && action <= numJads) {
-        const jadIndex = action - 1;
-        const jad = jadRegion.getJad(jadIndex);
-        if (jad) {
-            console.log(`[AGGRO] Targeting Jad ${jadIndex} (HP: ${jad.currentStats.hitpoint})`);
-            player.setAggro(jad);
-        } else {
-            // Debug: check why jad is null
-            const rawJad = (jadRegion as any)._jads[jadIndex];
-            if (!rawJad) {
-                console.log(`[AGGRO] Jad ${jadIndex} not found (never spawned)`);
-            } else {
-                console.log(`[AGGRO] Jad ${jadIndex} is dead (HP: ${rawJad.currentStats.hitpoint}, dying: ${rawJad.dying})`);
-            }
-        }
+    if (relativeAction < numJads) {
+        attackJad(player, jadRegion, relativeAction);
         return;
     }
+    relativeAction -= numJads;
 
-    // Actions N+1..N+N*H: AGGRO_HEALER
-    const healerActionStart = numJads + 1;
-    const healerActionEnd = numJads + totalHealers;
-    if (action >= healerActionStart && action <= healerActionEnd) {
-        const healerActionIndex = action - healerActionStart;
-        const jadIndex = Math.floor(healerActionIndex / healersPerJad);
-        const healerIndex = healerActionIndex % healersPerJad;
-        const healer = jadRegion.getHealer(jadIndex, healerIndex);
-        if (healer) {
-            console.log(`[AGGRO] Targeting Healer [${jadIndex}][${healerIndex}] (HP: ${healer.currentStats.hitpoint})`);
-            player.setAggro(healer);
-        } else {
-            // Debug: check why healer is null
-            const healerTuple = (jadRegion as any)._healers.get(jadIndex);
-            const rawHealer = healerTuple?.[healerIndex];
-            if (!rawHealer) {
-                console.log(`[AGGRO] Healer [${jadIndex}][${healerIndex}] not spawned yet`);
-            } else {
-                console.log(`[AGGRO] Healer [${jadIndex}][${healerIndex}] is dead (HP: ${rawHealer.currentStats.hitpoint}, dying: ${rawHealer.dying})`);
-            }
-        }
+    if (relativeAction < numHealers) {
+        const jadIndex = Math.floor(relativeAction / healersPerJad);
+        const healerIndex = relativeAction % healersPerJad;
+        attackHealer(player, jadRegion, jadIndex, healerIndex);
         return;
     }
-
-    // Prayer/potion actions (offset by aggro actions)
-    const prayerPotionActionStart = numJads + totalHealers + 1;
-    const relativeAction = action - prayerPotionActionStart;
+    relativeAction -= numHealers;
 
     switch (relativeAction) {
-        case 0: // TOGGLE_PROTECT_MELEE
+        case 0:
             togglePrayer(player, 'Protect from Melee');
             break;
-        case 1: // TOGGLE_PROTECT_MISSILES
+        case 1:
             togglePrayer(player, 'Protect from Range');
             break;
-        case 2: // TOGGLE_PROTECT_MAGIC
+        case 2:
             togglePrayer(player, 'Protect from Magic');
             break;
-        case 3: // TOGGLE_RIGOUR
+        case 3:
             togglePrayer(player, 'Rigour');
             break;
-        case 4: // DRINK_BASTION
+        case 4:
             drinkPotion(player, 'bastion');
             break;
-        case 5: // DRINK_SUPER_RESTORE
+        case 5:
             drinkPotion(player, 'restore');
             break;
-        case 6: // DRINK_SARA_BREW
+        case 6:
             drinkPotion(player, 'saradomin brew');
             break;
     }
