@@ -101,9 +101,6 @@ class AgentServer:
 
     def _parse_observation(self, obs_dict: dict) -> Observation:
         """Parse observation dict into Observation dataclass."""
-        jad_count = obs_dict.get("jad_count", self.config.jad_count)
-        healers_per_jad = obs_dict.get("healers_per_jad", self.config.healers_per_jad)
-
         # Parse jads array
         jads_data = obs_dict.get("jads", [])
         jads = [
@@ -130,10 +127,6 @@ class AgentServer:
         ]
 
         return Observation(
-            # Config
-            jad_count=jad_count,
-            healers_per_jad=healers_per_jad,
-
             # Player state
             player_hp=obs_dict.get("player_hp", 99),
             player_prayer=obs_dict.get("player_prayer", 99),
@@ -165,20 +158,10 @@ class AgentServer:
 
     def get_action(self, obs_dict: dict) -> tuple[int, float, list, Observation]:
         """Get action, value, processed observation, and parsed Observation from observation dictionary."""
-        # Update config from observation if provided
-        jad_count = obs_dict.get("jad_count", self.config.jad_count)
-        healers_per_jad = obs_dict.get("healers_per_jad", self.config.healers_per_jad)
-        if jad_count != self.config.jad_count or healers_per_jad != self.config.healers_per_jad:
-            self.config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
-            self.action_names = get_action_names(self.config)
-            self.normalize_mask = get_normalize_mask(self.config)
-            n_continuous = int(np.sum(self.normalize_mask))
-            self.obs_normalizer = RunningNormalizer(shape=(n_continuous,))
-
         obs = self._parse_observation(obs_dict)
 
         # Convert to array
-        obs_array = obs_to_array(obs)
+        obs_array = obs_to_array(obs, self.config)
 
         # Normalize only continuous features (matching training)
         # Both custom and SB3 models now use external normalization
@@ -252,12 +235,8 @@ class AgentServer:
                         self.episode_length += 1
                         self.prev_obs = obs
 
-                        # Generate action names dynamically based on observation's config
-                        obs_config = JadConfig(
-                            jad_count=obs_dict.get("jad_count", 1),
-                            healers_per_jad=obs_dict.get("healers_per_jad", 3),
-                        )
-                        action_names = get_action_names(obs_config)
+                        # Generate action names dynamically based on server config
+                        action_names = get_action_names(self.config)
 
                         response = {
                             "type": "action",

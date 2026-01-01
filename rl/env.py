@@ -44,10 +44,6 @@ class HealerState:
 @dataclass
 class Observation:
     """Observation from the Jad environment."""
-    # Config
-    jad_count: int
-    healers_per_jad: int
-
     # Player state
     player_hp: int
     player_prayer: int
@@ -146,9 +142,6 @@ class JadEnv:
 
     def _parse_observation(self, obs: dict) -> Observation:
         """Parse observation dict into Observation dataclass."""
-        jad_count = obs.get("jad_count", 1)
-        healers_per_jad = obs.get("healers_per_jad", 3)
-
         # Parse Jad states from array
         jads = []
         jads_data = obs.get("jads", [])
@@ -173,10 +166,6 @@ class JadEnv:
             ))
 
         return Observation(
-            # Config
-            jad_count=jad_count,
-            healers_per_jad=healers_per_jad,
-
             # Player state
             player_hp=obs["player_hp"],
             player_prayer=obs["player_prayer"],

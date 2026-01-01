@@ -64,7 +64,7 @@ class JadGymnasiumEnv(gym.Env):
         self.episode_length = 0
 
         # Return raw observation - normalization handled by SelectiveVecNormalize wrapper
-        obs_array = obs_to_array(self.current_obs)
+        obs_array = obs_to_array(self.current_obs, self._config)
         return obs_array, {}
 
     def step(self, action):
@@ -103,7 +103,7 @@ class JadGymnasiumEnv(gym.Env):
         )
 
         # Return raw observation - normalization handled by SelectiveVecNormalize wrapper
-        obs_array = obs_to_array(self.current_obs)
+        obs_array = obs_to_array(self.current_obs, self._config)
 
         # Build info dict with outcome for tracking
         info = {"raw_reward": reward}

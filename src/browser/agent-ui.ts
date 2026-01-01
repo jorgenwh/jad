@@ -32,9 +32,11 @@ export class AgentUI {
     }
 
     updateObservation(obs: JadObservation): void {
-        // Config
-        this.setElement('obs_jad_count', String(obs.jad_count));
-        this.setElement('obs_healers_per_jad', String(obs.healers_per_jad));
+        // Config (derived from arrays)
+        const jadCount = obs.jads.length;
+        const healersPerJad = jadCount > 0 ? obs.healers.length / jadCount : 0;
+        this.setElement('obs_jad_count', String(jadCount));
+        this.setElement('obs_healers_per_jad', String(healersPerJad));
 
         // Player state
         this.setElement('obs_hp', String(obs.player_hp));
@@ -64,8 +66,8 @@ export class AgentUI {
     }
 
     private decodeAggroName(obs: JadObservation): string {
-        const numJads = obs.jad_count;
-        const healersPerJad = obs.healers_per_jad;
+        const numJads = obs.jads.length;
+        const healersPerJad = numJads > 0 ? obs.healers.length / numJads : 0;
 
         if (obs.player_aggro >= 1 && obs.player_aggro <= numJads) {
             return `Jad ${obs.player_aggro}`;
@@ -100,10 +102,11 @@ export class AgentUI {
         if (!container) return;
 
         let html = '';
+        const healersPerJad = obs.jads.length > 0 ? obs.healers.length / obs.jads.length : 0;
         for (let i = 0; i < obs.healers.length; i++) {
             const healer = obs.healers[i];
-            const jadIdx = Math.floor(i / obs.healers_per_jad);
-            const hIdx = i % obs.healers_per_jad;
+            const jadIdx = Math.floor(i / healersPerJad);
+            const hIdx = i % healersPerJad;
             const aggroName = HEALER_AGGRO_NAMES[healer.aggro] || 'Unknown';
             html += `<div class="obs-healer">`;
             html += `<strong>H${jadIdx + 1}.${hIdx + 1}:</strong> `;

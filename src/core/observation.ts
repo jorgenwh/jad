@@ -225,9 +225,6 @@ export function buildObservation(
     const { healers, healersSpawned } = buildHealerStates(jadRegion, config);
 
     return {
-        jad_count: config.jadCount,
-        healers_per_jad: config.healersPerJad,
-
         player_hp: player?.currentStats?.hitpoint ?? 0,
         player_prayer: player?.currentStats?.prayer ?? 0,
         player_ranged: player?.currentStats?.range ?? 99,

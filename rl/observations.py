@@ -95,7 +95,7 @@ def safe_divide(value: float, divisor: float) -> float:
     return value / divisor
 
 
-def obs_to_array(obs: Observation) -> np.ndarray:
+def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
     """
     Convert Observation dataclass to numpy array with proper encoding.
 
@@ -104,11 +104,15 @@ def obs_to_array(obs: Observation) -> np.ndarray:
     2. One-hot features (player_aggro, active_prayer, jad_attacks, healer_aggros)
     3. Binary features (rigour_active, healers_spawned)
 
+    Args:
+        obs: The observation dataclass
+        config: Jad configuration (jad_count, healers_per_jad)
+
     Returns:
         Array of shape (obs_dim,) where obs_dim = get_obs_dim(config)
     """
-    jad_count = obs.jad_count
-    healers_per_jad = obs.healers_per_jad
+    jad_count = config.jad_count
+    healers_per_jad = config.healers_per_jad
     total_healers = jad_count * healers_per_jad
 
     # ========== CONTINUOUS FEATURES ==========

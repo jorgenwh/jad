@@ -41,10 +41,6 @@ export interface HealerState {
 }
 
 export interface JadObservation {
-    // Config
-    jad_count: number;
-    healers_per_jad: number;
-
     // Player state
     player_hp: number;
     player_prayer: number;
