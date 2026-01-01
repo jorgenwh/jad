@@ -1,28 +1,32 @@
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig, Observation, JadState, HealerState, HealerAggro } from './types';
+import { JadConfig, Observation, JadState, HealerState, HealerTarget } from './types';
 
 export function countPotionDoses(player: Player): {
     bastionDoses: number;
     saraBrewDoses: number;
     superRestoreDoses: number;
 } {
+    if (!player || !player.inventory) {
+        return { bastionDoses: 0, saraBrewDoses: 0, superRestoreDoses: 0 };
+    }
+
     let bastionDoses = 0;
     let saraBrewDoses = 0;
     let superRestoreDoses = 0;
 
-    if (player && player.inventory) {
-        for (const item of player.inventory) {
-            if (item && item instanceof Potion && item.doses > 0) {
-                const itemName = item.itemName?.toString().toLowerCase() || '';
-                if (itemName.includes('bastion')) {
-                    bastionDoses += item.doses;
-                } else if (itemName.includes('saradomin brew')) {
-                    saraBrewDoses += item.doses;
-                } else if (itemName.includes('restore')) {
-                    superRestoreDoses += item.doses;
-                }
-            }
+    for (const item of player.inventory) {
+        if (!item || !(item instanceof Potion) || item.doses <= 0) {
+            continue;
+        }
+
+        const itemName = item.itemName?.toString().toLowerCase() || '';
+        if (itemName.includes('bastion')) {
+            bastionDoses += item.doses;
+        } else if (itemName.includes('saradomin brew')) {
+            saraBrewDoses += item.doses;
+        } else if (itemName.includes('restore')) {
+            superRestoreDoses += item.doses;
         }
     }
 
@@ -30,26 +34,27 @@ export function countPotionDoses(player: Player): {
 }
 
 export function getActivePrayer(player: Player): { activePrayer: number; rigourActive: boolean } {
+    const prayerController = player.prayerController;
+    if (!prayerController) {
+        return { activePrayer: 0, rigourActive: false };
+    }
+
     let activePrayer = 0;
     let rigourActive = false;
 
-    const prayerController = player.prayerController;
-    if (prayerController) {
-        const magicPrayer = prayerController.findPrayerByName('Protect from Magic');
-        const rangePrayer = prayerController.findPrayerByName('Protect from Range');
-        const meleePrayer = prayerController.findPrayerByName('Protect from Melee');
-        const rigourPrayer = prayerController.findPrayerByName('Rigour');
+    const magicPrayer = prayerController.findPrayerByName('Protect from Magic');
+    const rangePrayer = prayerController.findPrayerByName('Protect from Range');
+    const meleePrayer = prayerController.findPrayerByName('Protect from Melee');
+    const rigourPrayer = prayerController.findPrayerByName('Rigour');
 
-        if (magicPrayer?.isActive) {
-            activePrayer = 1;
-        } else if (rangePrayer?.isActive) {
-            activePrayer = 2;
-        } else if (meleePrayer?.isActive) {
-            activePrayer = 3;
-        }
-
-        rigourActive = rigourPrayer?.isActive ?? false;
+    if (magicPrayer?.isActive) {
+        activePrayer = 1;
+    } else if (rangePrayer?.isActive) {
+        activePrayer = 2;
+    } else if (meleePrayer?.isActive) {
+        activePrayer = 3;
     }
+    rigourActive = rigourPrayer?.isActive ?? false;
 
     return { activePrayer, rigourActive };
 }
@@ -60,7 +65,6 @@ export function getPlayerTarget(
     config: JadConfig
 ): number {
     const target = player.aggro;
-
     if (!target) {
         return 0; // no target
     }
@@ -68,11 +72,7 @@ export function getPlayerTarget(
     // Check if target is one of the Jads in our region
     for (let i = 0; i < config.jadCount; i++) {
         const jad = jadRegion.getJad(i);
-        if (!jad) {
-            continue;
-        }
-
-        if (target === jad) {
+        if (jad && jad === target) {
             return i + 1;
         }
     }
@@ -81,18 +81,14 @@ export function getPlayerTarget(
     for (let jadIdx = 0; jadIdx < config.jadCount; jadIdx++) {
         for (let healerIdx = 0; healerIdx < config.healersPerJad; healerIdx++) {
             const healer = jadRegion.getHealer(jadIdx, healerIdx);
-            if (!healer) {
-                continue;
-            }
-
-            if (target === healer) {
+            if (healer && healer === target) {
                 return config.jadCount + jadIdx * config.healersPerJad + healerIdx + 1;
             }
         }
     }
 
-    // no target found - should never happen
-    throw new Error('Player target not found in JadRegion');
+    // Target not found among alive entities - player may be targeting a dead entity
+    return 0;
 }
 
 /**
@@ -101,9 +97,12 @@ export function getPlayerTarget(
 function getJadAttack(jad: { attackDelay: number; attackSpeed: number; attackStyle: string }): number {
     if (jad.attackDelay === jad.attackSpeed) {
         switch (jad.attackStyle) {
-            case 'magic': return 1;
-            case 'range': return 2;
-            case 'stab': return 3;
+            case 'magic':
+                return 1;
+            case 'range':
+                return 2;
+            case 'stab':
+                return 3;
             default:
                 throw new Error(`Unknown Jad attack style: ${jad.attackStyle}`);
         }
@@ -111,7 +110,7 @@ function getJadAttack(jad: { attackDelay: number; attackSpeed: number; attackSty
     return 0; // no attack this tick
 }
 
-export function buildJadStates(
+export function getJadStates(
     jadRegion: JadRegion,
     config: JadConfig
 ): JadState[] {
@@ -119,7 +118,6 @@ export function buildJadStates(
 
     for (let i = 0; i < config.jadCount; i++) {
         const jad = jadRegion.getJad(i);
-
         if (jad) {
             jads.push({
                 hp: jad.currentStats?.hitpoint ?? 0,
@@ -136,7 +134,7 @@ export function buildJadStates(
     return jads;
 }
 
-export function buildHealerStates(
+export function getHealerStates(
     jadRegion: JadRegion,
     config: JadConfig
 ): { healers: HealerState[]; healersSpawned: boolean } {
@@ -152,14 +150,14 @@ export function buildHealerStates(
                     hp: healer.currentStats?.hitpoint ?? 0,
                     x: healer.location.x,
                     y: healer.location.y,
-                    aggro: jadRegion.getHealerAggro(jadIdx, healerIdx),
+                    target: jadRegion.getHealerTarget(jadIdx, healerIdx),
                 });
             } else {
                 healers.push({
                     hp: 0,
                     x: 0,
                     y: 0,
-                    aggro: HealerAggro.NOT_PRESENT,
+                    target: HealerTarget.NOT_PRESENT,
                 });
             }
         }
@@ -176,9 +174,9 @@ export function buildObservation(
 ): Observation {
     const target = getPlayerTarget(player, jadRegion, config);
     const { activePrayer, rigourActive } = getActivePrayer(player);
+    const jads = getJadStates(jadRegion, config);
+    const { healers, healersSpawned } = getHealerStates(jadRegion, config);
     const { bastionDoses, saraBrewDoses, superRestoreDoses } = countPotionDoses(player);
-    const jads = buildJadStates(jadRegion, config);
-    const { healers, healersSpawned } = buildHealerStates(jadRegion, config);
 
     return {
         player_hp: player?.currentStats?.hitpoint ?? 0,
@@ -187,19 +185,18 @@ export function buildObservation(
         player_defence: player?.currentStats?.defence ?? 99,
         player_location_x: player?.location?.x ?? 0,
         player_location_y: player?.location?.y ?? 0,
-        player_aggro: target,
+        player_target: target,
 
         active_prayer: activePrayer,
         rigour_active: rigourActive,
-
-        bastion_doses: bastionDoses,
-        sara_brew_doses: saraBrewDoses,
-        super_restore_doses: superRestoreDoses,
 
         jads,
         healers,
         healers_spawned: healersSpawned,
 
+        bastion_doses: bastionDoses,
+        sara_brew_doses: saraBrewDoses,
+        super_restore_doses: superRestoreDoses,
         starting_bastion_doses: startingDoses.bastion,
         starting_sara_brew_doses: startingDoses.saraBrew,
         starting_super_restore_doses: startingDoses.superRestore,

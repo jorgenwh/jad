@@ -121,7 +121,7 @@ class AgentServer:
                 hp=h.get("hp", 0),
                 x=h.get("x", 0),
                 y=h.get("y", 0),
-                aggro=h.get("aggro", 0),
+                target=h.get("target", 0),
             )
             for h in healers_data
         ]
@@ -134,7 +134,7 @@ class AgentServer:
             player_defence=obs_dict.get("player_defence", 99),
             player_location_x=obs_dict.get("player_location_x", 0),
             player_location_y=obs_dict.get("player_location_y", 0),
-            player_aggro=obs_dict.get("player_aggro", 0),
+            player_target=obs_dict.get("player_target", 0),
 
             # Prayer state
             active_prayer=obs_dict.get("active_prayer", 0),

@@ -24,7 +24,7 @@ export interface JadState {
     alive: boolean;
 }
 
-export enum HealerAggro {
+export enum HealerTarget {
     NOT_PRESENT = 0,
     JAD = 1,
     PLAYER = 2,
@@ -34,7 +34,7 @@ export interface HealerState {
     hp: number;
     x: number;
     y: number;
-    aggro: HealerAggro;
+    target: HealerTarget;
 }
 
 export interface Observation {
@@ -44,12 +44,11 @@ export interface Observation {
     player_defence: number;
     player_location_x: number;
     player_location_y: number;
-
     // Player's current attack target. N is number of Jads
     // - 0: none
     // - 1..N: Jad 1 through Jad N
     // - N+1..N+N*H: Healer (jadIdx * healersPerJad + healerIdx + N + 1)
-    player_aggro: number;
+    player_target: number;
 
     active_prayer: number;  // 0=none, 1=mage, 2=range, 3=melee
     rigour_active: boolean;
@@ -61,7 +60,6 @@ export interface Observation {
     bastion_doses: number;
     sara_brew_doses: number;
     super_restore_doses: number;
-
     starting_bastion_doses: number;
     starting_sara_brew_doses: number;
     starting_super_restore_doses: number;

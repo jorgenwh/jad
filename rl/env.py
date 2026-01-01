@@ -38,7 +38,7 @@ class HealerState:
     hp: int
     x: int
     y: int
-    aggro: int  # 0=not_present, 1=jad, 2=player
+    target: int  # 0=not_present, 1=jad, 2=player
 
 
 @dataclass
@@ -51,7 +51,7 @@ class Observation:
     player_defence: int     # Current defence stat (1-118)
     player_location_x: int  # Player x position (0-26)
     player_location_y: int  # Player y position (0-26)
-    player_aggro: int       # 0=none, 1..N=jad, N+1..=healer
+    player_target: int      # 0=none, 1..N=jad, N+1..=healer
 
     # Prayer state
     active_prayer: int      # 0=none, 1=mage, 2=range, 3=melee
@@ -162,7 +162,7 @@ class JadEnv:
                 hp=healer_data.get("hp", 0),
                 x=healer_data.get("x", 0),
                 y=healer_data.get("y", 0),
-                aggro=healer_data.get("aggro", 0),
+                target=healer_data.get("target", 0),
             ))
 
         return Observation(
@@ -173,7 +173,7 @@ class JadEnv:
             player_defence=obs.get("player_defence", 99),
             player_location_x=obs.get("player_location_x", 0),
             player_location_y=obs.get("player_location_y", 0),
-            player_aggro=obs.get("player_aggro", 0),
+            player_target=obs.get("player_target", 0),
 
             # Prayer state
             active_prayer=obs["active_prayer"],

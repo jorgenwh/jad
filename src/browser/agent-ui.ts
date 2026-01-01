@@ -7,7 +7,7 @@ import { Observation } from '../core';
 
 const PRAYER_NAMES = ['None', 'Mage', 'Range', 'Melee'];
 const ATTACK_NAMES = ['None', 'Mage', 'Range', 'Melee'];
-const HEALER_AGGRO_NAMES = ['Not Present', 'Jad', 'Player'];
+const HEALER_TARGET_NAMES = ['Not Present', 'Jad', 'Player'];
 
 export class AgentUI {
     showAgentInfo(show: boolean): void {
@@ -69,10 +69,10 @@ export class AgentUI {
         const numJads = obs.jads.length;
         const healersPerJad = numJads > 0 ? obs.healers.length / numJads : 0;
 
-        if (obs.player_aggro >= 1 && obs.player_aggro <= numJads) {
-            return `Jad ${obs.player_aggro}`;
-        } else if (obs.player_aggro > numJads) {
-            const healerIdx = obs.player_aggro - numJads - 1;
+        if (obs.player_target >= 1 && obs.player_target <= numJads) {
+            return `Jad ${obs.player_target}`;
+        } else if (obs.player_target > numJads) {
+            const healerIdx = obs.player_target - numJads - 1;
             const jadIdx = Math.floor(healerIdx / healersPerJad);
             const hIdx = healerIdx % healersPerJad;
             return `H${jadIdx + 1}.${hIdx + 1}`;
@@ -107,10 +107,10 @@ export class AgentUI {
             const healer = obs.healers[i];
             const jadIdx = Math.floor(i / healersPerJad);
             const hIdx = i % healersPerJad;
-            const aggroName = HEALER_AGGRO_NAMES[healer.aggro] || 'Unknown';
+            const targetName = HEALER_TARGET_NAMES[healer.target] || 'Unknown';
             html += `<div class="obs-healer">`;
             html += `<strong>H${jadIdx + 1}.${hIdx + 1}:</strong> `;
-            html += `HP: ${healer.hp} | Aggro: ${aggroName} | Pos: (${healer.x}, ${healer.y})`;
+            html += `HP: ${healer.hp} | Target: ${targetName} | Pos: (${healer.x}, ${healer.y})`;
             html += `</div>`;
         }
         container.innerHTML = html;

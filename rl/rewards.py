@@ -7,10 +7,10 @@ from typing import Callable
 from env import Observation, TerminationState
 
 
-# Healer aggro constants (must match HealerAggro enum in TypeScript)
-HEALER_AGGRO_NOT_PRESENT = 0
-HEALER_AGGRO_JAD = 1
-HEALER_AGGRO_PLAYER = 2
+# Healer target constants (must match HealerTarget enum in TypeScript)
+HEALER_TARGET_NOT_PRESENT = 0
+HEALER_TARGET_JAD = 1
+HEALER_TARGET_PLAYER = 2
 
 REWARD_FUNCTIONS: dict[str, Callable] = {}
 
@@ -59,15 +59,15 @@ def healer_tag_reward(obs: Observation, prev_obs: Observation) -> float:
     """
     Compute reward for tagging healers (pulling them off Jad).
 
-    Returns +5 for each healer whose aggro transitions from JAD to PLAYER.
+    Returns +5 for each healer whose target transitions from JAD to PLAYER.
     This is a one-time reward per healer per spawn.
     """
     reward = 0.0
     tag_reward = 5.0
 
     for healer, prev_healer in zip(obs.healers, prev_obs.healers):
-        if (prev_healer.aggro == HEALER_AGGRO_JAD and
-                healer.aggro == HEALER_AGGRO_PLAYER):
+        if (prev_healer.target == HEALER_TARGET_JAD and
+                healer.target == HEALER_TARGET_PLAYER):
             reward += tag_reward
 
     return reward
@@ -106,7 +106,7 @@ def reward_default(
     reward += prayer_landing_reward(obs, prev_obs, correct=2.5, wrong=-7.5)
 
     # Penalty for not being in combat
-    if obs.player_aggro == 0:
+    if obs.player_target == 0:
         reward -= 0.5
 
     # Penalty for rigour not active
@@ -187,7 +187,7 @@ def reward_multijad(
     reward += prayer_landing_reward(obs, prev_obs, correct=1.25, wrong=-3.75)
 
     # Penalty for not being in combat
-    if obs.player_aggro == 0:
+    if obs.player_target == 0:
         reward -= 0.5
 
     # Penalty for rigour not active

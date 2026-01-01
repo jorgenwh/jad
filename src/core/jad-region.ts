@@ -4,7 +4,7 @@ import { InvisibleMovementBlocker } from 'osrs-sdk';
 import { getRangedLoadout } from './loadout';
 import { Jad } from './jad';
 import { YtHurKot } from './healer';
-import { JadConfig, DEFAULT_CONFIG, HealerAggro } from './types';
+import { JadConfig, DEFAULT_CONFIG, HealerTarget } from './types';
 
 const REGION_WIDTH = 27;
 const REGION_HEIGHT = 27;
@@ -90,14 +90,9 @@ export class JadRegion extends Region {
             return null;
         }
 
-        const jad = this._jads[index];
-        if (!jad) {
-            console.warn(`Jad ${index} is null`);
-            return null;
-        }
-
         // Check both isDying and HP to handle timing gap between HP=0 and death animation
-        if (jad.isDying() || jad.currentStats.hitpoint <= 0) {
+        const jad = this._jads[index];
+        if (!jad || jad.isDying() || jad.currentStats.hitpoint <= 0) {
             return null;
         }
 
@@ -118,38 +113,30 @@ export class JadRegion extends Region {
         }
 
         const healers = this._healers.get(jadIndex);
-        if (!healers) {
-            return null;
-        }
-
-        if (healerIndex < 0 || healerIndex >= healers.length) {
-            return null;
-        }
-
-        const healer = healers[healerIndex];
-        if (!healer) {
+        if (!healers || healerIndex < 0 || healerIndex >= healers.length) {
             return null;
         }
 
         // Check both isDying and HP to handle timing gap between HP=0 and death animation
-        if (healer.isDying() || healer.currentStats.hitpoint <= 0) {
+        const healer = healers[healerIndex];
+        if (!healer || healer.isDying() || healer.currentStats.hitpoint <= 0) {
             return null;
         }
 
         return healer;
     }
 
-    getHealerAggro(jadIndex: number, healerIndex: number): HealerAggro {
+    getHealerTarget(jadIndex: number, healerIndex: number): HealerTarget {
         const healer = this.getHealer(jadIndex, healerIndex);
         if (!healer) {
-            return HealerAggro.NOT_PRESENT;
+            return HealerTarget.NOT_PRESENT;
         }
 
-        const aggro = healer.aggro;
-        if (aggro && aggro.type === UnitTypes.PLAYER) {
-            return HealerAggro.PLAYER;
+        const target = healer.aggro;
+        if (target && target.type === UnitTypes.PLAYER) {
+            return HealerTarget.PLAYER;
         }
-        return HealerAggro.JAD;
+        return HealerTarget.JAD;
     }
 
     initialiseRegion(): { player: Player } {

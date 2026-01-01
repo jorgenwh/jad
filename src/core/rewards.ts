@@ -1,4 +1,4 @@
-import { Observation, HealerAggro } from './types';
+import { Observation, HealerTarget } from './types';
 
 export enum TerminationState {
     ONGOING = 'ongoing',
@@ -41,7 +41,7 @@ export function computeReward(
 
 /**
  * Compute reward for tagging healers (pulling them off Jad).
- * Returns +5 for each healer whose aggro transitions from JAD to PLAYER.
+ * Returns +5 for each healer whose target transitions from JAD to PLAYER.
  */
 function healerTagReward(obs: Observation, prevObs: Observation): number {
     let reward = 0;
@@ -50,7 +50,7 @@ function healerTagReward(obs: Observation, prevObs: Observation): number {
     for (let i = 0; i < obs.healers.length; i++) {
         const healer = obs.healers[i];
         const prevHealer = prevObs.healers[i];
-        if (prevHealer.aggro === HealerAggro.JAD && healer.aggro === HealerAggro.PLAYER) {
+        if (prevHealer.target === HealerTarget.JAD && healer.target === HealerTarget.PLAYER) {
             reward += tagReward;
         }
     }
@@ -115,7 +115,7 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
     reward += prayerLandingReward(obs, prevObs, 2.5, -7.5);
 
     // Penalty for not being in combat
-    if (obs.player_aggro === 0) {
+    if (obs.player_target === 0) {
         reward -= 0.5;
     }
 
@@ -186,7 +186,7 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
     reward += prayerLandingReward(obs, prevObs, 1.25, -3.75);
 
     // Penalty for not being in combat
-    if (obs.player_aggro === 0) {
+    if (obs.player_target === 0) {
         reward -= 0.5;
     }
 
