@@ -73,11 +73,12 @@ function checkStart() {
 
 function startGameWithAgent() {
     // Hook into the world's tick event to run agent each tick
-    const originalTick = world.tickWorld.bind(world);
+    const tickWorld = world.tickWorld.bind(world);
+
     world.tickWorld = (ticks: number) => {
-        originalTick(ticks);  // Tick happens FIRST
+        tickWorld(ticks);  // Tick happens FIRST
         if (agentController) {
-            agentController.tick();  // Then observe (state AFTER tick, matching headless)
+            agentController.tick();  // Then observe
         }
     };
 

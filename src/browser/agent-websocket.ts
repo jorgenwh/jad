@@ -1,8 +1,3 @@
-/**
- * WebSocket service for communicating with the Python RL agent server.
- * Handles connection management and message protocol.
- */
-
 import { Observation } from '../core';
 
 export type ActionHandler = (action: number, actionName: string, value: number, observation?: Observation, cumulativeReward?: number, episodeLength?: number, processedObs?: number[]) => void;

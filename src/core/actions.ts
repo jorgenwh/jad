@@ -68,8 +68,6 @@ function attackHealer(player: Player, jadRegion: JadRegion, jadIndex: number, he
 }
 
 /**
- * Execute action based on dynamic action space.
- *
  * Action structure:
  * - 0: DO_NOTHING
  * - 1..N: AGGRO_JAD_1 through AGGRO_JAD_N

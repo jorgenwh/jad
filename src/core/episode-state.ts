@@ -1,8 +1,3 @@
-/**
- * Episode state tracking for RL training.
- * Manages attack states, termination detection, and observation building.
- */
-
 import { Player } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
 import { JadConfig, Observation } from './types';

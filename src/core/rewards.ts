@@ -39,29 +39,20 @@ export function computeReward(
     return fn(obs, prevObs, termination, episodeLength);
 }
 
-/**
- * Compute reward for tagging healers (pulling them off Jad).
- * Returns +5 for each healer whose target transitions from JAD to PLAYER.
- */
 function healerTagReward(obs: Observation, prevObs: Observation): number {
     let reward = 0;
-    const tagReward = 5.0;
 
     for (let i = 0; i < obs.healers.length; i++) {
         const healer = obs.healers[i];
         const prevHealer = prevObs.healers[i];
         if (prevHealer.target === HealerTarget.JAD && healer.target === HealerTarget.PLAYER) {
-            reward += tagReward;
+            reward += 5.0;
         }
     }
 
     return reward;
 }
 
-/**
- * Compute prayer switching reward on the tick damage lands.
- * Attack landing = was visible in prev, now cleared.
- */
 function prayerLandingReward(
     obs: Observation,
     prevObs: Observation,
@@ -85,11 +76,7 @@ function prayerLandingReward(
     return reward;
 }
 
-/**
- * Compute reward for killing individual Jads.
- * Detects when a Jad's HP transitions from >0 to <=0.
- */
-function jadKillReward(obs: Observation, prevObs: Observation, killReward: number = 100.0): number {
+function jadKillReward(obs: Observation, prevObs: Observation, killReward: number): number {
     let reward = 0;
 
     for (let i = 0; i < obs.jads.length; i++) {
@@ -103,15 +90,14 @@ function jadKillReward(obs: Observation, prevObs: Observation, killReward: numbe
     return reward;
 }
 
-// Default reward function
 registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => {
-    let reward = 0;
-
     if (prevObs === null) {
-        return reward;
+        return 0;
     }
 
-    // Prayer switching - only on landing tick
+    let reward = 0;
+
+    // Penalty/reward for praying correctly on tick when Jad attack lands
     reward += prayerLandingReward(obs, prevObs, 2.5, -7.5);
 
     // Penalty for not being in combat
@@ -124,16 +110,16 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
         reward -= 0.2;
     }
 
-    // Penalty for low ranged stat (encourages bastion)
+    // Penalty for low ranged stat
     reward -= (1 - (obs.player_ranged / 112.0));
 
-    // Damage taken penalty
+    // Penalty for damage taken
     const damageTaken = prevObs.player_hp - obs.player_hp;
     if (damageTaken > 0) {
         reward -= damageTaken * 0.1;
     }
 
-    // Jad healing penalty
+    // Penalty for Jad healing
     for (let i = 0; i < obs.jads.length; i++) {
         const jadHealed = obs.jads[i].hp - prevObs.jads[i].hp;
         if (jadHealed > 0) {
@@ -141,7 +127,7 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
         }
     }
 
-    // Healer tagging reward
+    // Reward for tagging healers to stop them from healing Jads
     reward += healerTagReward(obs, prevObs);
 
     // Terminal rewards
@@ -161,7 +147,6 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
     return reward;
 });
 
-// Sparse reward function
 registerRewardFunction('sparse', (_obs, _prevObs, termination, _episodeLength) => {
     switch (termination) {
         case TerminationState.JAD_KILLED:
@@ -174,7 +159,6 @@ registerRewardFunction('sparse', (_obs, _prevObs, termination, _episodeLength) =
     }
 });
 
-// Multi-jad reward function
 registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) => {
     let reward = 0;
 
@@ -182,7 +166,7 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         return reward;
     }
 
-    // Prayer switching - only on landing tick (reduced values for multi-jad)
+    // Penalty/reward for praying correctly on tick when Jad attack lands
     reward += prayerLandingReward(obs, prevObs, 1.25, -3.75);
 
     // Penalty for not being in combat
@@ -195,16 +179,16 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         reward -= 0.2;
     }
 
-    // Penalty for low ranged stat (encourages bastion)
+    // Penalty for low ranged stat
     reward -= (1 - (obs.player_ranged / 112.0));
 
-    // Damage taken penalty
+    // Penalty for damage taken
     const damageTaken = prevObs.player_hp - obs.player_hp;
     if (damageTaken > 0) {
         reward -= damageTaken * 0.1;
     }
 
-    // Jad healing penalty
+    // Penalty for Jad healing
     for (let i = 0; i < obs.jads.length; i++) {
         const jadHealed = obs.jads[i].hp - prevObs.jads[i].hp;
         if (jadHealed > 0) {
@@ -212,11 +196,11 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         }
     }
 
-    // Healer tagging reward
+    // Reward for tagging healers to stop them from healing Jads
     reward += healerTagReward(obs, prevObs);
 
-    // Per-Jad kill reward (incremental, not just at end)
-    reward += jadKillReward(obs, prevObs);
+    // Reward for each Jad killed
+    reward += jadKillReward(obs, prevObs, 100.0);
 
     // Terminal rewards
     switch (termination) {

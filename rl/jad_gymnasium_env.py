@@ -14,7 +14,7 @@ from env import JadEnv, Observation, TerminationState
 from observations import obs_to_array, get_obs_dim, get_normalize_mask
 
 
-MAX_EPISODE_LENGTH = 300  # Hard cap to prevent stalling
+BASE_EPISODE_LENGTH = 300  # Per-jad episode length cap during training
 
 
 class JadGymnasiumEnv(gym.Env):
@@ -27,11 +27,17 @@ class JadGymnasiumEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, config: JadConfig | None = None, reward_type: str = "default"):
+    def __init__(self, config: JadConfig | None = None, reward_type: str = "default",
+                 training: bool = True):
         super().__init__()
 
         self._config = config or JadConfig()
         self._reward_type = reward_type
+        self._training = training
+        # Scale episode length by jad count; no limit for evaluation
+        self._max_episode_length = (
+            BASE_EPISODE_LENGTH * self._config.jad_count if training else float('inf')
+        )
         self.env = JadEnv(config=self._config)
 
         # Get dynamic dimensions
@@ -85,7 +91,7 @@ class JadGymnasiumEnv(gym.Env):
                 termination = TerminationState.JAD_KILLED
             else:
                 termination = TerminationState.PLAYER_DIED
-        elif self.episode_length >= MAX_EPISODE_LENGTH:
+        elif self.episode_length >= self._max_episode_length:
             termination = TerminationState.TRUNCATED
             truncated = True
         else:
@@ -118,10 +124,11 @@ class JadGymnasiumEnv(gym.Env):
         self.env.close()
 
 
-def make_jad_env(config: JadConfig | None = None, reward_type: str = "default"):
+def make_jad_env(config: JadConfig | None = None, reward_type: str = "default",
+                 training: bool = True):
     """Factory function for creating JadGymnasiumEnv instances wrapped with Monitor."""
     def _init():
-        env = JadGymnasiumEnv(config=config, reward_type=reward_type)
+        env = JadGymnasiumEnv(config=config, reward_type=reward_type, training=training)
         # Monitor wrapper adds episode stats (r, l, t) to info dict
         return Monitor(env)
     return _init
