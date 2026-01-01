@@ -126,8 +126,8 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
         safe_divide(obs.bastion_doses, obs.starting_bastion_doses),
         safe_divide(obs.sara_brew_doses, obs.starting_sara_brew_doses),
         safe_divide(obs.super_restore_doses, obs.starting_super_restore_doses),
-        obs.player_x / MAX_COORD,
-        obs.player_y / MAX_COORD,
+        obs.player_location_x / MAX_COORD,
+        obs.player_location_y / MAX_COORD,
     ], dtype=np.float32)
 
     # Jad continuous (3 * jad_count features)

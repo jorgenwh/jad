@@ -54,60 +54,61 @@ export function getActivePrayer(player: Player): { activePrayer: number; rigourA
     return { activePrayer, rigourActive };
 }
 
-/**
- * Determine player's current aggro target encoded as observation value.
- * 0=none, 1..N=jad_N, N+1..N+N*H=healer
- */
-export function getPlayerAggroTarget(
+export function getPlayerTarget(
     player: Player,
     jadRegion: JadRegion,
     config: JadConfig
 ): number {
-    let playerAggro = 0;
-    const playerAggroTarget = player.aggro;
+    const target = player.aggro;
 
-    if (playerAggroTarget) {
-        // Check if aggro is one of the Jads
-        for (let i = 0; i < config.jadCount; i++) {
-            const jad = jadRegion.getJad(i);
-            if (jad && playerAggroTarget === jad) {
-                playerAggro = i + 1;
-                break;
-            }
+    if (!target) {
+        return 0; // no target
+    }
+
+    // Check if target is one of the Jads in our region
+    for (let i = 0; i < config.jadCount; i++) {
+        const jad = jadRegion.getJad(i);
+        if (!jad) {
+            continue;
         }
 
-        // If not a Jad, check if it's a healer
-        if (playerAggro === 0) {
-            for (let jadIdx = 0; jadIdx < config.jadCount; jadIdx++) {
-                for (let healerIdx = 0; healerIdx < config.healersPerJad; healerIdx++) {
-                    const healer = jadRegion.getHealer(jadIdx, healerIdx);
-                    if (healer && playerAggroTarget === healer) {
-                        playerAggro = config.jadCount + jadIdx * config.healersPerJad + healerIdx + 1;
-                        break;
-                    }
-                }
-                if (playerAggro !== 0) break;
+        if (target === jad) {
+            return i + 1;
+        }
+    }
+
+    // Check if target is one of the healers in our region
+    for (let jadIdx = 0; jadIdx < config.jadCount; jadIdx++) {
+        for (let healerIdx = 0; healerIdx < config.healersPerJad; healerIdx++) {
+            const healer = jadRegion.getHealer(jadIdx, healerIdx);
+            if (!healer) {
+                continue;
+            }
+
+            if (target === healer) {
+                return config.jadCount + jadIdx * config.healersPerJad + healerIdx + 1;
             }
         }
     }
 
-    return playerAggro;
+    // no target found - should never happen
+    throw new Error('Player target not found in JadRegion');
 }
 
 /**
- * Get attack value for a Jad.
- * Attack is only reported on the tick it fires (when attackDelay just reset to attackSpeed).
+ * Attack is only reported on the tick it fires (when attackDelay just reset to attackSpeed)
  */
 function getJadAttack(jad: { attackDelay: number; attackSpeed: number; attackStyle: string }): number {
-    // Attack just fired this tick if delay equals attack speed (just reset)
     if (jad.attackDelay === jad.attackSpeed) {
         switch (jad.attackStyle) {
             case 'magic': return 1;
             case 'range': return 2;
-            default: return 3; // melee
+            case 'stab': return 3;
+            default:
+                throw new Error(`Unknown Jad attack style: ${jad.attackStyle}`);
         }
     }
-    return 0; // No attack this tick
+    return 0; // no attack this tick
 }
 
 export function buildJadStates(
@@ -173,9 +174,9 @@ export function buildObservation(
     config: JadConfig,
     startingDoses: { bastion: number; saraBrew: number; superRestore: number }
 ): Observation {
+    const target = getPlayerTarget(player, jadRegion, config);
     const { activePrayer, rigourActive } = getActivePrayer(player);
     const { bastionDoses, saraBrewDoses, superRestoreDoses } = countPotionDoses(player);
-    const playerAggro = getPlayerAggroTarget(player, jadRegion, config);
     const jads = buildJadStates(jadRegion, config);
     const { healers, healersSpawned } = buildHealerStates(jadRegion, config);
 
@@ -184,9 +185,9 @@ export function buildObservation(
         player_prayer: player?.currentStats?.prayer ?? 0,
         player_ranged: player?.currentStats?.range ?? 99,
         player_defence: player?.currentStats?.defence ?? 99,
-        player_x: player?.location?.x ?? 0,
-        player_y: player?.location?.y ?? 0,
-        player_aggro: playerAggro,
+        player_location_x: player?.location?.x ?? 0,
+        player_location_y: player?.location?.y ?? 0,
+        player_aggro: target,
 
         active_prayer: activePrayer,
         rigour_active: rigourActive,
@@ -204,4 +205,3 @@ export function buildObservation(
         starting_super_restore_doses: startingDoses.superRestore,
     };
 }
-

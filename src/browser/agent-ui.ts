@@ -43,7 +43,7 @@ export class AgentUI {
         this.setElement('obs_prayer', String(obs.player_prayer));
         this.setElement('obs_ranged', String(obs.player_ranged));
         this.setElement('obs_defence', String(obs.player_defence));
-        this.setElement('obs_pos', `(${obs.player_x}, ${obs.player_y})`);
+        this.setElement('obs_pos', `(${obs.player_location_x}, ${obs.player_location_y})`);
 
         // Player aggro
         this.setElement('obs_aggro', this.decodeAggroName(obs));

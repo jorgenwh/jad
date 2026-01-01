@@ -71,14 +71,14 @@ export function executeAction(
     jadRegion: JadRegion,
     config: JadConfig
 ): void {
-    const numJads = config.jadCount;
-    const healersPerJad = config.healersPerJad;
-    const totalHealers = numJads * healersPerJad;
-
     // Action 0: DO_NOTHING
     if (action === 0) {
         return;
     }
+
+    const numJads = config.jadCount;
+    const healersPerJad = config.healersPerJad;
+    const totalHealers = numJads * healersPerJad;
 
     // Actions 1..N: AGGRO_JAD_1 through AGGRO_JAD_N
     if (action >= 1 && action <= numJads) {

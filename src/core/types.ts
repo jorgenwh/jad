@@ -16,7 +16,6 @@ export function getActionCount(config: JadConfig): number {
     return 1 + config.jadCount + config.jadCount * config.healersPerJad + 7;
 }
 
-// Single Jad state in observation
 export interface JadState {
     hp: number;
     attack: number;  // 0=none, 1=mage, 2=range, 3=melee
@@ -25,14 +24,12 @@ export interface JadState {
     alive: boolean;
 }
 
-// Healer aggro state
 export enum HealerAggro {
     NOT_PRESENT = 0,
     JAD = 1,
     PLAYER = 2,
 }
 
-// Single healer state in observation
 export interface HealerState {
     hp: number;
     x: number;
@@ -41,34 +38,30 @@ export interface HealerState {
 }
 
 export interface Observation {
-    // Player state
     player_hp: number;
     player_prayer: number;
     player_ranged: number;
     player_defence: number;
-    player_x: number;
-    player_y: number;
-    player_aggro: number;  // 0=none, 1..N=jad_N, N+1..=healer
+    player_location_x: number;
+    player_location_y: number;
 
-    // Prayer state
+    // Player's current attack target. N is number of Jads
+    // - 0: none
+    // - 1..N: Jad 1 through Jad N
+    // - N+1..N+N*H: Healer (jadIdx * healersPerJad + healerIdx + N + 1)
+    player_aggro: number;
+
     active_prayer: number;  // 0=none, 1=mage, 2=range, 3=melee
     rigour_active: boolean;
 
-    // Inventory
+    jads: JadState[];
+    healers: HealerState[];
+    healers_spawned: boolean;
+
     bastion_doses: number;
     sara_brew_doses: number;
     super_restore_doses: number;
 
-    // Dynamic Jad state array
-    jads: JadState[];
-
-    // Dynamic healer state array (flattened)
-    healers: HealerState[];
-
-    // Whether any healers have spawned
-    healers_spawned: boolean;
-
-    // Starting doses for normalization
     starting_bastion_doses: number;
     starting_sara_brew_doses: number;
     starting_super_restore_doses: number;

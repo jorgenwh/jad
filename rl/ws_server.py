@@ -132,8 +132,8 @@ class AgentServer:
             player_prayer=obs_dict.get("player_prayer", 99),
             player_ranged=obs_dict.get("player_ranged", 99),
             player_defence=obs_dict.get("player_defence", 99),
-            player_x=obs_dict.get("player_x", 0),
-            player_y=obs_dict.get("player_y", 0),
+            player_location_x=obs_dict.get("player_location_x", 0),
+            player_location_y=obs_dict.get("player_location_y", 0),
             player_aggro=obs_dict.get("player_aggro", 0),
 
             # Prayer state

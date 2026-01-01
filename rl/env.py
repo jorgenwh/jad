@@ -49,8 +49,8 @@ class Observation:
     player_prayer: int
     player_ranged: int      # Current ranged stat (1-118)
     player_defence: int     # Current defence stat (1-118)
-    player_x: int           # Player x position (0-19)
-    player_y: int           # Player y position (0-19)
+    player_location_x: int  # Player x position (0-26)
+    player_location_y: int  # Player y position (0-26)
     player_aggro: int       # 0=none, 1..N=jad, N+1..=healer
 
     # Prayer state
@@ -171,8 +171,8 @@ class JadEnv:
             player_prayer=obs["player_prayer"],
             player_ranged=obs.get("player_ranged", 99),
             player_defence=obs.get("player_defence", 99),
-            player_x=obs.get("player_x", 0),
-            player_y=obs.get("player_y", 0),
+            player_location_x=obs.get("player_location_x", 0),
+            player_location_y=obs.get("player_location_y", 0),
             player_aggro=obs.get("player_aggro", 0),
 
             # Prayer state
