@@ -89,8 +89,7 @@ export class AgentController {
             return;
         }
 
-        // Update attack tracking and send observation
-        this.episode.updateAttackTracking();
+        // Send observation
         const obs = this.episode.getObservation();
         this.ws.sendObservation(obs);
     }

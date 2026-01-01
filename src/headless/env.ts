@@ -4,11 +4,8 @@ import {
     JadConfig,
     DEFAULT_CONFIG,
     JadObservation,
-    JadAttackState,
     countPotionDoses,
     buildObservation,
-    updateJadAttackTracking,
-    initializeAttackStates,
     executeAction,
     computeReward,
     TerminationState,
@@ -36,9 +33,6 @@ export class HeadlessEnv {
     private envConfig: EnvConfig;
     private createRegionFunc: (config: JadConfig) => Region;
 
-    // Track attack state per Jad
-    private jadAttackStates: JadAttackState[] = [];
-
     // Track starting potion doses for normalization
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
 
@@ -63,12 +57,11 @@ export class HeadlessEnv {
     private initialize(): void {
         this.region.world = this.world;
         this.world.addRegion(this.region);
-        Trainer.setPlayer(this.player);
 
         const result = (this.region as { initialiseRegion(): { player: Player } }).initialiseRegion();
         this.player = result.player;
 
-        this.jadAttackStates = initializeAttackStates(this.region as JadRegion, this.jadConfig);
+        Trainer.setPlayer(this.player);
 
         this.captureStartingDoses();
 
@@ -105,9 +98,6 @@ export class HeadlessEnv {
 
         // Execute action before tick
         executeAction(action, this.player, this.region as JadRegion, this.jadConfig);
-
-        // Update Jad attack tracking before tick
-        updateJadAttackTracking(this.region as JadRegion, this.jadConfig, this.jadAttackStates);
 
         // Advance simulation by one tick
         this.world.tickWorld(1);
@@ -166,7 +156,6 @@ export class HeadlessEnv {
             this.player,
             this.region as JadRegion,
             this.jadConfig,
-            this.jadAttackStates,
             this.startingDoses
         );
     }

@@ -1,10 +1,7 @@
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig, JadObservation, JadState, HealerState, JadAttackState, HealerAggro } from './types';
+import { JadConfig, JadObservation, JadState, HealerState, HealerAggro } from './types';
 
-/**
- * Count potion doses in player inventory.
- */
 export function countPotionDoses(player: Player): {
     bastionDoses: number;
     saraBrewDoses: number;
@@ -32,9 +29,6 @@ export function countPotionDoses(player: Player): {
     return { bastionDoses, saraBrewDoses, superRestoreDoses };
 }
 
-/**
- * Get active prayer state from player.
- */
 export function getActivePrayer(player: Player): { activePrayer: number; rigourActive: boolean } {
     let activePrayer = 0;
     let rigourActive = false;
@@ -101,23 +95,34 @@ export function getPlayerAggroTarget(
 }
 
 /**
- * Build Jad state array for observation.
+ * Get attack value for a Jad.
+ * Attack is only reported on the tick it fires (when attackDelay just reset to attackSpeed).
  */
+function getJadAttack(jad: { attackDelay: number; attackSpeed: number; attackStyle: string }): number {
+    // Attack just fired this tick if delay equals attack speed (just reset)
+    if (jad.attackDelay === jad.attackSpeed) {
+        switch (jad.attackStyle) {
+            case 'magic': return 1;
+            case 'range': return 2;
+            default: return 3; // melee
+        }
+    }
+    return 0; // No attack this tick
+}
+
 export function buildJadStates(
     jadRegion: JadRegion,
-    config: JadConfig,
-    attackStates: JadAttackState[]
+    config: JadConfig
 ): JadState[] {
     const jads: JadState[] = [];
 
     for (let i = 0; i < config.jadCount; i++) {
         const jad = jadRegion.getJad(i);
-        const attackState = attackStates[i];
 
         if (jad) {
             jads.push({
                 hp: jad.currentStats?.hitpoint ?? 0,
-                attack: attackState?.attack ?? 0,
+                attack: getJadAttack(jad),
                 x: jad.location.x,
                 y: jad.location.y,
                 alive: jad.dying === -1 && (jad.currentStats?.hitpoint ?? 0) > 0,
@@ -130,9 +135,6 @@ export function buildJadStates(
     return jads;
 }
 
-/**
- * Build healer state array for observation (flattened).
- */
 export function buildHealerStates(
     jadRegion: JadRegion,
     config: JadConfig
@@ -165,63 +167,16 @@ export function buildHealerStates(
     return { healers, healersSpawned };
 }
 
-/**
- * Update Jad attack tracking state based on current game state.
- * Detects when a Jad starts an attack based on attackDelay changes.
- */
-export function updateJadAttackTracking(
-    jadRegion: JadRegion,
-    config: JadConfig,
-    attackStates: JadAttackState[]
-): void {
-    for (let i = 0; i < config.jadCount; i++) {
-        const jad = jadRegion.getJad(i);
-        if (!jad) continue;
-
-        const state = attackStates[i];
-        const currentDelay = jad.attackDelay;
-
-        // Detect actual attack: attackDelay was low (0-1), now it's high (just reset after attacking)
-        if (state.prevAttackDelay <= 1 && currentDelay > 1) {
-            const style = jad.attackStyle;
-            if (style === 'magic') {
-                state.attack = 1;
-                state.ticksRemaining = 4;
-            } else if (style === 'range') {
-                state.attack = 2;
-                state.ticksRemaining = 4;
-            } else {
-                state.attack = 3;
-                state.ticksRemaining = 2;
-            }
-        }
-
-        // Decrement visibility timer
-        if (state.ticksRemaining > 0) {
-            state.ticksRemaining--;
-            if (state.ticksRemaining === 0) {
-                state.attack = 0;
-            }
-        }
-
-        state.prevAttackDelay = currentDelay;
-    }
-}
-
-/**
- * Build complete observation from game state.
- */
 export function buildObservation(
     player: Player,
     jadRegion: JadRegion,
     config: JadConfig,
-    attackStates: JadAttackState[],
     startingDoses: { bastion: number; saraBrew: number; superRestore: number }
 ): JadObservation {
     const { activePrayer, rigourActive } = getActivePrayer(player);
     const { bastionDoses, saraBrewDoses, superRestoreDoses } = countPotionDoses(player);
     const playerAggro = getPlayerAggroTarget(player, jadRegion, config);
-    const jads = buildJadStates(jadRegion, config, attackStates);
+    const jads = buildJadStates(jadRegion, config);
     const { healers, healersSpawned } = buildHealerStates(jadRegion, config);
 
     return {
@@ -250,15 +205,3 @@ export function buildObservation(
     };
 }
 
-export function initializeAttackStates(jadRegion: JadRegion, config: JadConfig): JadAttackState[] {
-    const states: JadAttackState[] = [];
-    for (let i = 0; i < config.jadCount; i++) {
-        const jad = jadRegion.getJad(i);
-        states.push({
-            attack: 0,
-            ticksRemaining: 0,
-            prevAttackDelay: jad?.attackDelay ?? 0,
-        });
-    }
-    return states;
-}

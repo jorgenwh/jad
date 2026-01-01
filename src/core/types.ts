@@ -74,9 +74,3 @@ export interface JadObservation {
     starting_super_restore_doses: number;
 }
 
-// Per-Jad attack tracking state
-export interface JadAttackState {
-    attack: number;  // 0=none, 1=mage, 2=range, 3=melee
-    ticksRemaining: number;
-    prevAttackDelay: number;
-}

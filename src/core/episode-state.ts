@@ -5,13 +5,8 @@
 
 import { Player } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig, JadObservation, JadAttackState } from './types';
-import {
-    countPotionDoses,
-    buildObservation,
-    updateJadAttackTracking,
-    initializeAttackStates,
-} from './observation';
+import { JadConfig, JadObservation } from './types';
+import { countPotionDoses, buildObservation } from './observation';
 
 export type TerminationResult = 'player_died' | 'jad_killed' | null;
 
@@ -20,7 +15,6 @@ export class EpisodeState {
     private jadRegion: JadRegion;
     private config: JadConfig;
 
-    private jadAttackStates: JadAttackState[] = [];
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
 
     private _cumulativeReward = 0;
@@ -68,7 +62,6 @@ export class EpisodeState {
         this._terminated = false;
         this._terminationResult = null;
 
-        this.jadAttackStates = initializeAttackStates(this.jadRegion, this.config);
         this.captureStartingDoses();
     }
 
@@ -77,14 +70,6 @@ export class EpisodeState {
      */
     reset(): void {
         this.initialize();
-    }
-
-    /**
-     * Update attack tracking for all Jads.
-     * Should be called each tick before building observation.
-     */
-    updateAttackTracking(): void {
-        updateJadAttackTracking(this.jadRegion, this.config, this.jadAttackStates);
     }
 
     /**
@@ -131,7 +116,6 @@ export class EpisodeState {
             this.player,
             this.jadRegion,
             this.config,
-            this.jadAttackStates,
             this.startingDoses
         );
     }
