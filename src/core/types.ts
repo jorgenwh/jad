@@ -40,7 +40,7 @@ export interface HealerState {
     aggro: HealerAggro;
 }
 
-export interface JadObservation {
+export interface Observation {
     // Player state
     player_hp: number;
     player_prayer: number;

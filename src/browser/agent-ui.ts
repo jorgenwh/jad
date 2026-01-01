@@ -3,7 +3,7 @@
  * Handles all DOM updates for observation display, action display, and rewards.
  */
 
-import { JadObservation } from '../core';
+import { Observation } from '../core';
 
 const PRAYER_NAMES = ['None', 'Mage', 'Range', 'Melee'];
 const ATTACK_NAMES = ['None', 'Mage', 'Range', 'Melee'];
@@ -31,7 +31,7 @@ export class AgentUI {
         this.setElement('agent_steps', String(episodeLength));
     }
 
-    updateObservation(obs: JadObservation): void {
+    updateObservation(obs: Observation): void {
         // Config (derived from arrays)
         const jadCount = obs.jads.length;
         const healersPerJad = jadCount > 0 ? obs.healers.length / jadCount : 0;
@@ -65,7 +65,7 @@ export class AgentUI {
         this.updateHealersDisplay(obs);
     }
 
-    private decodeAggroName(obs: JadObservation): string {
+    private decodeAggroName(obs: Observation): string {
         const numJads = obs.jads.length;
         const healersPerJad = numJads > 0 ? obs.healers.length / numJads : 0;
 
@@ -80,7 +80,7 @@ export class AgentUI {
         return 'None';
     }
 
-    private updateJadsDisplay(obs: JadObservation): void {
+    private updateJadsDisplay(obs: Observation): void {
         const container = document.getElementById('obs_jads_container');
         if (!container) return;
 
@@ -97,7 +97,7 @@ export class AgentUI {
         container.innerHTML = html;
     }
 
-    private updateHealersDisplay(obs: JadObservation): void {
+    private updateHealersDisplay(obs: Observation): void {
         const container = document.getElementById('obs_healers_container');
         if (!container) return;
 

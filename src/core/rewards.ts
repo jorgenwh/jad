@@ -1,4 +1,4 @@
-import { JadObservation, HealerAggro } from './types';
+import { Observation, HealerAggro } from './types';
 
 export enum TerminationState {
     ONGOING = 'ongoing',
@@ -8,8 +8,8 @@ export enum TerminationState {
 }
 
 export type RewardFunction = (
-    obs: JadObservation,
-    prevObs: JadObservation | null,
+    obs: Observation,
+    prevObs: Observation | null,
     termination: TerminationState,
     episodeLength: number
 ) => number;
@@ -25,8 +25,8 @@ export function listRewardFunctions(): string[] {
 }
 
 export function computeReward(
-    obs: JadObservation,
-    prevObs: JadObservation | null,
+    obs: Observation,
+    prevObs: Observation | null,
     termination: TerminationState,
     episodeLength: number,
     rewardFunc: string = 'default'
@@ -43,7 +43,7 @@ export function computeReward(
  * Compute reward for tagging healers (pulling them off Jad).
  * Returns +5 for each healer whose aggro transitions from JAD to PLAYER.
  */
-function healerTagReward(obs: JadObservation, prevObs: JadObservation): number {
+function healerTagReward(obs: Observation, prevObs: Observation): number {
     let reward = 0;
     const tagReward = 5.0;
 
@@ -63,8 +63,8 @@ function healerTagReward(obs: JadObservation, prevObs: JadObservation): number {
  * Attack landing = was visible in prev, now cleared.
  */
 function prayerLandingReward(
-    obs: JadObservation,
-    prevObs: JadObservation,
+    obs: Observation,
+    prevObs: Observation,
     correct: number = 2.5,
     wrong: number = -7.5
 ): number {
@@ -89,7 +89,7 @@ function prayerLandingReward(
  * Compute reward for killing individual Jads.
  * Detects when a Jad's HP transitions from >0 to <=0.
  */
-function jadKillReward(obs: JadObservation, prevObs: JadObservation, killReward: number = 100.0): number {
+function jadKillReward(obs: Observation, prevObs: Observation, killReward: number = 100.0): number {
     let reward = 0;
 
     for (let i = 0; i < obs.jads.length; i++) {

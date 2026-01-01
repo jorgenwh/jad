@@ -55,21 +55,6 @@ const JAD_SPAWN_POSITIONS: { x: number; y: number }[][] = [
     ],
 ];
 
-function getAttackSpeed(jadCount: number): number {
-    return jadCount === 1 ? SINGLE_JAD_ATTACK_SPEED : MULTI_JAD_ATTACK_SPEED;
-}
-
-/**
- * @param orderPosition - Position in the attack order (0 = attacks first)
- * @param jadCount - Total number of Jads
- */
-function getAttackOffset(orderPosition: number, jadCount: number): number {
-    const attackSpeed = getAttackSpeed(jadCount);
-    // Stagger attacks evenly across the attack speed window
-    // E.g., for 3 Jads with attack speed 9: offsets of 1, 4, 7 (like InfernoTrainer)
-    return 1 + Math.floor((orderPosition * attackSpeed) / jadCount);
-}
-
 function shuffleArray<T>(array: T[]): T[] {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -175,7 +160,7 @@ export class JadRegion extends Region {
         this.addBoundaryBlockers();
 
         const spawnPositions = JAD_SPAWN_POSITIONS[this.config.jadCount - 1] || JAD_SPAWN_POSITIONS[0];
-        const attackSpeed = getAttackSpeed(this.config.jadCount);
+        const attackSpeed = this.config.jadCount === 1 ? SINGLE_JAD_ATTACK_SPEED : MULTI_JAD_ATTACK_SPEED;
 
         const attackOrder = shuffleArray(
             Array.from({ length: this.config.jadCount }, (_, i) => i)
@@ -185,7 +170,8 @@ export class JadRegion extends Region {
         for (let i = 0; i < this.config.jadCount; i++) {
             const pos = spawnPositions[i];
             // Use shuffled position in attack order for this Jad's timing
-            const attackOffset = getAttackOffset(attackOrder[i], this.config.jadCount);
+            const attackOffset = 1 + Math.floor((attackOrder[i] * attackSpeed) / this.config.jadCount);
+
             const jad = new Jad(this, pos, i, this.config.healersPerJad, attackSpeed, {
                 aggro: player,
                 cooldown: attackOffset,  // Initial attackDelay offset

@@ -1,6 +1,6 @@
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig, JadObservation, JadState, HealerState, HealerAggro } from './types';
+import { JadConfig, Observation, JadState, HealerState, HealerAggro } from './types';
 
 export function countPotionDoses(player: Player): {
     bastionDoses: number;
@@ -172,7 +172,7 @@ export function buildObservation(
     jadRegion: JadRegion,
     config: JadConfig,
     startingDoses: { bastion: number; saraBrew: number; superRestore: number }
-): JadObservation {
+): Observation {
     const { activePrayer, rigourActive } = getActivePrayer(player);
     const { bastionDoses, saraBrewDoses, superRestoreDoses } = countPotionDoses(player);
     const playerAggro = getPlayerAggroTarget(player, jadRegion, config);

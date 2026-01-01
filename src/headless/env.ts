@@ -3,7 +3,7 @@ import {
     JadRegion,
     JadConfig,
     DEFAULT_CONFIG,
-    JadObservation,
+    Observation,
     countPotionDoses,
     buildObservation,
     executeAction,
@@ -20,7 +20,7 @@ const DEFAULT_ENV_CONFIG: EnvConfig = {
 };
 
 export interface StepResult {
-    observation: JadObservation;
+    observation: Observation;
     reward: number;
     terminated: boolean;
 }
@@ -33,11 +33,10 @@ export class HeadlessEnv {
     private envConfig: EnvConfig;
     private createRegionFunc: (config: JadConfig) => Region;
 
-    // Track starting potion doses for normalization
+    // Track starting potion doses for observation normalization
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
 
-    // Track for reward computation
-    private prevObservation: JadObservation | null = null;
+    private prevObservation: Observation | null = null;
     private episodeLength: number = 0;
 
     constructor(
@@ -83,7 +82,12 @@ export class HeadlessEnv {
         this.region = this.createRegionFunc(this.jadConfig);
         this.initialize();
 
-        const observation = this.getObservation();
+        const observation = buildObservation(
+            this.player,
+            this.region as JadRegion,
+            this.jadConfig,
+            this.startingDoses
+        );
 
         return {
             observation,
@@ -93,25 +97,25 @@ export class HeadlessEnv {
     }
 
     step(action: number): StepResult {
-        // Store previous observation for reward computation
-        this.prevObservation = this.getObservation();
+        this.prevObservation = buildObservation(
+            this.player,
+            this.region as JadRegion,
+            this.jadConfig,
+            this.startingDoses
+        );
 
-        // Execute action before tick
         executeAction(action, this.player, this.region as JadRegion, this.jadConfig);
 
-        // Advance simulation by one tick
         this.world.tickWorld(1);
-
-        // Increment episode length
         this.episodeLength++;
 
-        // Get observation after tick
-        const observation = this.getObservation();
-
-        // Determine termination state
+        const observation = buildObservation(
+            this.player,
+            this.region as JadRegion,
+            this.jadConfig,
+            this.startingDoses
+        );
         const termination = this.getTerminationState();
-
-        // Compute reward
         const reward = computeReward(
             observation,
             this.prevObservation,
@@ -149,14 +153,5 @@ export class HeadlessEnv {
         }
 
         return TerminationState.ONGOING;
-    }
-
-    private getObservation(): JadObservation {
-        return buildObservation(
-            this.player,
-            this.region as JadRegion,
-            this.jadConfig,
-            this.startingDoses
-        );
     }
 }

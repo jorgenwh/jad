@@ -5,7 +5,7 @@
 
 import { Player } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig, JadObservation } from './types';
+import { JadConfig, Observation } from './types';
 import { countPotionDoses, buildObservation } from './observation';
 
 export type TerminationResult = 'player_died' | 'jad_killed' | null;
@@ -111,7 +111,7 @@ export class EpisodeState {
     /**
      * Build the current observation.
      */
-    getObservation(): JadObservation {
+    getObservation(): Observation {
         return buildObservation(
             this.player,
             this.jadRegion,

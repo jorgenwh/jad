@@ -3,9 +3,9 @@
  * Handles connection management and message protocol.
  */
 
-import { JadObservation } from '../core';
+import { Observation } from '../core';
 
-export type ActionHandler = (action: number, actionName: string, value: number, observation?: JadObservation, cumulativeReward?: number, episodeLength?: number, processedObs?: number[]) => void;
+export type ActionHandler = (action: number, actionName: string, value: number, observation?: Observation, cumulativeReward?: number, episodeLength?: number, processedObs?: number[]) => void;
 export type TerminatedAckHandler = (cumulativeReward: number, episodeLength: number, terminalReward: number, result: string) => void;
 export type ConnectionHandler = (connected: boolean) => void;
 
@@ -89,13 +89,13 @@ export class AgentWebSocket {
         }
     }
 
-    sendObservation(observation: JadObservation): void {
+    sendObservation(observation: Observation): void {
         if (this.ws && this._connected) {
             this.ws.send(JSON.stringify({ type: 'observation', observation }));
         }
     }
 
-    sendTerminated(result: string, observation: JadObservation): void {
+    sendTerminated(result: string, observation: Observation): void {
         if (this.ws && this._connected) {
             this.ws.send(JSON.stringify({ type: 'terminated', result, observation }));
         }
