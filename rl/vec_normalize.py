@@ -1,16 +1,8 @@
-"""
-Custom VecNormalize wrapper that only normalizes continuous features.
-
-Unlike SB3's VecNormalize which normalizes all observation dimensions,
-this wrapper uses a mask to selectively normalize only continuous features,
-leaving one-hot encoded features unchanged.
-"""
-
 import numpy as np
 from stable_baselines3.common.vec_env import VecEnvWrapper
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from config import JadConfig
+from jad_types import JadConfig
 from observations import get_normalize_mask, NORMALIZE_MASK
 
 

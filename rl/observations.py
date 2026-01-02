@@ -1,16 +1,5 @@
-"""
-Observation encoding for Jad RL environment.
-Supports dynamic observation sizes based on Jad count.
-
-Observation structure for N Jads:
-- Continuous features (normalized to [0,1])
-- One-hot features for player target, prayer, jad attacks, healer targets
-- Binary features (piety, healers_spawned)
-"""
-
 import numpy as np
-from env import Observation
-from config import JadConfig
+from jad_types import JadConfig, Observation
 
 
 # Normalization constants

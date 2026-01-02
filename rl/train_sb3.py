@@ -1,17 +1,3 @@
-"""
-Training script using Stable-Baselines3 with parallelized environments.
-Supports 1-6 Jads with per-Jad healers.
-
-Usage:
-    python train_sb3.py                                  # Train 1-Jad with default settings
-    python train_sb3.py --jad-count 2                    # Train 2-Jad environment
-    python train_sb3.py --jad-count 6 --num-envs 8       # 6 Jads with 8 parallel envs
-    python train_sb3.py --timesteps 500000               # Train for 500k timesteps
-    python train_sb3.py --timesteps 0                    # Train forever (Ctrl+C to stop)
-    python train_sb3.py --resume checkpoints/best_sb3_1jad.zip  # Resume from checkpoint
-    python train_sb3.py --reward-func aggressive         # Use aggressive reward function
-"""
-
 import argparse
 import time
 from pathlib import Path
@@ -20,11 +6,14 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
-from config import JadConfig, get_action_count
+from jad_types import JadConfig
+from utils import get_action_count
 from jad_gymnasium_env import make_jad_env
 from observations import get_obs_dim
-from rewards import list_reward_functions
 from vec_normalize import SelectiveVecNormalize
+
+# Available reward functions (defined in TypeScript src/core/rewards.ts)
+REWARD_FUNCTIONS = ['default', 'sparse', 'multijad']
 
 
 class EpisodeStatsCallback(BaseCallback):
@@ -344,8 +333,8 @@ def main():
         "--reward-func",
         type=str,
         default="default",
-        choices=list_reward_functions(),
-        help=f"Reward function to use (default: default). Available: {list_reward_functions()}",
+        choices=REWARD_FUNCTIONS,
+        help=f"Reward function to use (default: default). Available: {REWARD_FUNCTIONS}",
     )
     args = parser.parse_args()
 

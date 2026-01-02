@@ -1,13 +1,3 @@
-"""
-WebSocket server for browser visualization of the trained agent.
-
-Run this server, then open the browser simulation to see the agent play.
-
-Usage:
-    python ws_server.py                                        # Use default checkpoint
-    python ws_server.py --checkpoint checkpoints/best_sb3.zip  # Specific checkpoint
-"""
-
 import asyncio
 import json
 import numpy as np
@@ -18,8 +8,7 @@ from pathlib import Path
 
 from observations import obs_to_array, get_normalize_mask
 from vec_normalize import RunningNormalizer
-from env import Observation, JadState, HealerState
-from config import JadConfig
+from jad_types import JadConfig, Observation, JadState, HealerState
 
 
 class AgentServer:
@@ -32,8 +21,6 @@ class AgentServer:
         self._load_model(checkpoint_path)
 
     def _load_model(self, checkpoint_path: str):
-        """Load SB3 .zip checkpoint."""
-
         self.model = RecurrentPPO.load(checkpoint_path, device="auto")
         self.lstm_state = None  # Will be initialized on first prediction
         print(f"Loaded checkpoint: {checkpoint_path}")
@@ -64,7 +51,6 @@ class AgentServer:
             print("  Observations will not be normalized correctly!")
 
     def _parse_observation(self, obs_dict: dict) -> Observation:
-        """Parse observation dict into Observation dataclass."""
         # Parse jads array
         jads_data = obs_dict.get("jads", [])
         jads = [
@@ -121,7 +107,6 @@ class AgentServer:
         )
 
     def get_action(self, obs_dict: dict) -> tuple[int, float]:
-        """Get action and value estimate from observation dictionary."""
         obs = self._parse_observation(obs_dict)
 
         # Convert to array
@@ -160,11 +145,9 @@ class AgentServer:
         return int(action), value
 
     def reset_state(self):
-        """Reset LSTM state for new episode."""
         self.lstm_state = None
 
     async def handle_connection(self, websocket):
-        """Handle a WebSocket connection from the browser."""
         print("Browser connected!")
 
         try:
@@ -196,7 +179,6 @@ class AgentServer:
             print("Browser disconnected")
 
     async def start(self, host: str = "localhost", port: int = 8765):
-        """Start the WebSocket server."""
         print(f"Starting agent server on ws://{host}:{port}")
         print("Waiting for browser connection...")
 
