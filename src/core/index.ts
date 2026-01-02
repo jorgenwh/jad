@@ -10,5 +10,4 @@ export { getRangedLoadout, getMeleeLoadout } from './loadout';
 // Shared logic
 export * from './observation';
 export * from './actions';
-export * from './episode-state';
 export * from './rewards';

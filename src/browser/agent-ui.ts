@@ -1,8 +1,3 @@
-/**
- * UI service for displaying agent state in the browser.
- * Handles all DOM updates for observation display, action display, and rewards.
- */
-
 import { Observation } from '../core';
 
 const PRAYER_NAMES = ['None', 'Mage', 'Range', 'Melee'];

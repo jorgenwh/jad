@@ -1,21 +1,21 @@
-/**
- * Agent controller that orchestrates the browser-side RL agent.
- * Coordinates between WebSocket communication, episode state, and UI display.
- */
-
 import { Player } from 'osrs-sdk';
-import { JadRegion, JadConfig, EpisodeState, executeAction } from '../core';
+import { JadRegion, JadConfig, executeAction, countPotionDoses, buildObservation } from '../core';
 import { AgentWebSocket } from './agent-websocket';
 import { AgentUI } from './agent-ui';
+
+type TerminationResult = 'player_died' | 'jad_killed' | null;
 
 export class AgentController {
     private ws: AgentWebSocket;
     private ui: AgentUI;
-    private episode: EpisodeState;
 
     private player: Player;
     private jadRegion: JadRegion;
     private config: JadConfig;
+
+    private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
+    private terminated = false;
+    private terminationResult: TerminationResult = null;
 
     constructor(player: Player, jadRegion: JadRegion, config: JadConfig) {
         this.player = player;
@@ -24,8 +24,8 @@ export class AgentController {
 
         this.ws = new AgentWebSocket();
         this.ui = new AgentUI();
-        this.episode = new EpisodeState(player, jadRegion, this.config);
 
+        this.captureStartingDoses();
         this.setupWebSocketHandlers();
     }
 
@@ -48,15 +48,15 @@ export class AgentController {
             }
 
             if (cumulativeReward !== undefined && episodeLength !== undefined) {
-                this.episode.cumulativeReward = cumulativeReward;
-                this.episode.episodeLength = episodeLength;
+                this.cumulativeReward = cumulativeReward;
+                this.episodeLength = episodeLength;
                 this.ui.updateReward(cumulativeReward, episodeLength);
             }
         };
 
         this.ws.onTerminatedAck = (cumulativeReward, episodeLength, terminalReward, result) => {
-            this.episode.cumulativeReward = cumulativeReward;
-            this.episode.episodeLength = episodeLength;
+            this.cumulativeReward = cumulativeReward;
+            this.episodeLength = episodeLength;
             this.ui.updateReward(cumulativeReward, episodeLength);
             console.log(`Episode ${result}: terminal_reward=${terminalReward.toFixed(1)}, total=${cumulativeReward.toFixed(1)}`);
         };
@@ -64,7 +64,7 @@ export class AgentController {
 
     connect(): Promise<void> {
         return this.ws.connect().then(() => {
-            this.episode.reset();
+            this.resetEpisode();
             this.ws.sendReset();
         });
     }
@@ -75,14 +75,19 @@ export class AgentController {
             return;
         }
         // Skip if episode already terminated
-        if (this.episode.terminated) {
+        if (this.terminated) {
             return;
         }
 
         // Check for termination
-        const result = this.episode.checkTermination();
+        const result = this.checkTermination();
         if (result) {
-            const obs = this.episode.getObservation();
+            const obs = buildObservation(
+                this.player,
+                this.jadRegion,
+                this.config,
+                this.startingDoses
+            );
             this.ui.updateObservation(obs);
             this.ui.updateActionStatus(result === 'player_died' ? 'DEAD' : 'WIN');
             this.ws.sendTerminated(result, obs);
@@ -90,7 +95,61 @@ export class AgentController {
         }
 
         // Send observation
-        const obs = this.episode.getObservation();
+        const obs = buildObservation(
+            this.player,
+            this.jadRegion,
+            this.config,
+            this.startingDoses
+        );
         this.ws.sendObservation(obs);
+    }
+
+    private captureStartingDoses(): void {
+        const doses = countPotionDoses(this.player);
+        this.startingDoses = {
+            bastion: doses.bastionDoses,
+            saraBrew: doses.saraBrewDoses,
+            superRestore: doses.superRestoreDoses,
+        };
+    }
+
+    private resetEpisode(): void {
+        this.cumulativeReward = 0;
+        this.episodeLength = 0;
+        this.terminated = false;
+        this.terminationResult = null;
+        this.captureStartingDoses();
+    }
+
+    private checkTermination(): TerminationResult {
+        if (this.terminated) {
+            return this.terminationResult;
+        }
+
+        // Check player death
+        const playerDead = this.player.dying > 0 || this.player.currentStats.hitpoint <= 0;
+        if (playerDead) {
+            this.terminated = true;
+            this.terminationResult = 'player_died';
+            return this.terminationResult;
+        }
+
+        // Check if all Jads are dead
+        let allJadsDead = true;
+        for (let i = 0; i < this.config.jadCount; i++) {
+            const jad = this.jadRegion.getJad(i);
+            if (jad && jad.currentStats.hitpoint > 0 && jad.dying === -1) {
+                allJadsDead = false;
+                break;
+            }
+        }
+
+        if (allJadsDead) {
+            this.terminated = true;
+            this.terminationResult = 'jad_killed';
+            return this.terminationResult;
+        }
+
+        return null;
     }
 }
