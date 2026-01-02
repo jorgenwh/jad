@@ -3,8 +3,8 @@ import './mocks';
 
 import * as readline from 'readline';
 import { Settings } from 'osrs-sdk';
-import { JadRegion, JadConfig } from '../core';
-import { HeadlessEnv, EnvConfig, StepResult } from './env';
+import { JadRegion, JadConfig, StepResult } from '../core';
+import { HeadlessEnv, EnvConfig } from './env';
 
 // Initialize settings from (mock) storage
 Settings.readFromStorage();

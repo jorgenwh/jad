@@ -1,9 +1,18 @@
 import { Player } from 'osrs-sdk';
-import { JadRegion, JadConfig, executeAction, countPotionDoses, buildObservation } from '../core';
 import { AgentWebSocket } from './agent-websocket';
 import { AgentUI } from './agent-ui';
-
-type TerminationResult = 'player_died' | 'jad_killed' | null;
+import {
+    JadRegion,
+    JadConfig,
+    Observation,
+    executeAction,
+    countPotionDoses,
+    buildObservation,
+    computeReward,
+    TerminationState,
+    getActionName,
+    checkTermination,
+} from '../core';
 
 export class AgentController {
     private ws: AgentWebSocket;
@@ -14,8 +23,10 @@ export class AgentController {
     private config: JadConfig;
 
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
-    private terminated = false;
-    private terminationResult: TerminationResult = null;
+    private prevObservation: Observation | null = null;
+    private cumulativeReward = 0;
+    private episodeLength = 0;
+    private terminationState = TerminationState.ONGOING;
 
     constructor(player: Player, jadRegion: JadRegion, config: JadConfig) {
         this.player = player;
@@ -30,35 +41,33 @@ export class AgentController {
     }
 
     private setupWebSocketHandlers(): void {
-        this.ws.onConnectionChange = (connected) => {
+        this.ws.onConnectionChange = (connected: boolean) => {
             this.ui.showAgentInfo(connected);
         };
 
-        this.ws.onAction = (action, actionName, value, observation, cumulativeReward, episodeLength, processedObs) => {
+        this.ws.onAction = (action, value) => {
             executeAction(action, this.player, this.jadRegion, this.config);
 
-            if (processedObs) {
-                console.log(`Agent: ${actionName} | Processed obs: [${processedObs.map((v: number) => v.toFixed(2)).join(', ')}]`);
-            }
+            const obs = buildObservation(
+                this.player,
+                this.jadRegion,
+                this.config,
+                this.startingDoses
+            );
+            const reward = computeReward(
+                obs,
+                this.prevObservation,
+                TerminationState.ONGOING,
+                this.episodeLength
+            );
+            this.cumulativeReward += reward;
+            this.episodeLength++;
+            this.prevObservation = obs;
 
+            const actionName = getActionName(action, this.config);
             this.ui.updateAction(actionName, value);
-
-            if (observation) {
-                this.ui.updateObservation(observation);
-            }
-
-            if (cumulativeReward !== undefined && episodeLength !== undefined) {
-                this.cumulativeReward = cumulativeReward;
-                this.episodeLength = episodeLength;
-                this.ui.updateReward(cumulativeReward, episodeLength);
-            }
-        };
-
-        this.ws.onTerminatedAck = (cumulativeReward, episodeLength, terminalReward, result) => {
-            this.cumulativeReward = cumulativeReward;
-            this.episodeLength = episodeLength;
-            this.ui.updateReward(cumulativeReward, episodeLength);
-            console.log(`Episode ${result}: terminal_reward=${terminalReward.toFixed(1)}, total=${cumulativeReward.toFixed(1)}`);
+            this.ui.updateObservation(obs);
+            this.ui.updateReward(this.cumulativeReward, this.episodeLength);
         };
     }
 
@@ -70,38 +79,48 @@ export class AgentController {
     }
 
     tick(): void {
-        // Skip if not connected to ws server
-        if (!this.ws.connected) {
-            return;
-        }
-        // Skip if episode already terminated
-        if (this.terminated) {
+        if (!this.ws.connected || this.terminationState !== TerminationState.ONGOING) {
             return;
         }
 
-        // Check for termination
-        const result = this.checkTermination();
-        if (result) {
-            const obs = buildObservation(
-                this.player,
-                this.jadRegion,
-                this.config,
-                this.startingDoses
-            );
-            this.ui.updateObservation(obs);
-            this.ui.updateActionStatus(result === 'player_died' ? 'DEAD' : 'WIN');
-            this.ws.sendTerminated(result, obs);
-            return;
-        }
-
-        // Send observation
         const obs = buildObservation(
             this.player,
             this.jadRegion,
             this.config,
             this.startingDoses
         );
-        this.ws.sendObservation(obs);
+
+        const state = checkTermination(this.player, this.jadRegion, this.config);
+
+        // Handle ongoing episode
+        if (state === TerminationState.ONGOING) {
+            this.ws.sendStep({
+                observation: obs,
+                reward: 0,
+                terminated: false,
+            });
+        } else { // Handle episode termination
+            this.terminationState = state;
+            const reward = computeReward(
+                obs,
+                this.prevObservation,
+                state,
+                this.episodeLength
+            );
+            this.cumulativeReward += reward
+
+            this.ui.updateObservation(obs);
+            this.ui.updateActionStatus(state === TerminationState.PLAYER_DIED ? 'DEAD' : 'WIN');
+            this.ui.updateReward(this.cumulativeReward, this.episodeLength);
+
+            console.log(`Episode ${state}: terminal_reward=${reward.toFixed(1)}, total=${this.cumulativeReward.toFixed(1)}`);
+
+            this.ws.sendStep({
+                observation: obs,
+                reward: reward,
+                terminated: true,
+            });
+        }
     }
 
     private captureStartingDoses(): void {
@@ -114,42 +133,10 @@ export class AgentController {
     }
 
     private resetEpisode(): void {
+        this.prevObservation = null;
         this.cumulativeReward = 0;
         this.episodeLength = 0;
-        this.terminated = false;
-        this.terminationResult = null;
+        this.terminationState = TerminationState.ONGOING;
         this.captureStartingDoses();
-    }
-
-    private checkTermination(): TerminationResult {
-        if (this.terminated) {
-            return this.terminationResult;
-        }
-
-        // Check player death
-        const playerDead = this.player.dying > 0 || this.player.currentStats.hitpoint <= 0;
-        if (playerDead) {
-            this.terminated = true;
-            this.terminationResult = 'player_died';
-            return this.terminationResult;
-        }
-
-        // Check if all Jads are dead
-        let allJadsDead = true;
-        for (let i = 0; i < this.config.jadCount; i++) {
-            const jad = this.jadRegion.getJad(i);
-            if (jad && jad.currentStats.hitpoint > 0 && jad.dying === -1) {
-                allJadsDead = false;
-                break;
-            }
-        }
-
-        if (allJadsDead) {
-            this.terminated = true;
-            this.terminationResult = 'jad_killed';
-            return this.terminationResult;
-        }
-
-        return null;
     }
 }

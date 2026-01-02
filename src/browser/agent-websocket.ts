@@ -1,7 +1,6 @@
-import { Observation } from '../core';
+import { StepResult } from '../core';
 
-export type ActionHandler = (action: number, actionName: string, value: number, observation?: Observation, cumulativeReward?: number, episodeLength?: number, processedObs?: number[]) => void;
-export type TerminatedAckHandler = (cumulativeReward: number, episodeLength: number, terminalReward: number, result: string) => void;
+export type ActionHandler = (action: number, value: number) => void;
 export type ConnectionHandler = (connected: boolean) => void;
 
 export class AgentWebSocket {
@@ -9,9 +8,7 @@ export class AgentWebSocket {
     private _connected = false;
     private url: string;
 
-    // Event handlers
     public onAction: ActionHandler | null = null;
-    public onTerminatedAck: TerminatedAckHandler | null = null;
     public onConnectionChange: ConnectionHandler | null = null;
 
     constructor(url = 'ws://localhost:8765') {
@@ -54,25 +51,7 @@ export class AgentWebSocket {
     private handleMessage(event: MessageEvent): void {
         try {
             const data = JSON.parse(event.data);
-
-            if (data.type === 'action') {
-                this.onAction?.(
-                    data.action,
-                    data.action_name,
-                    data.value,
-                    data.observation,
-                    data.cumulative_reward,
-                    data.episode_length,
-                    data.processed_obs
-                );
-            } else if (data.type === 'terminated_ack') {
-                this.onTerminatedAck?.(
-                    data.cumulative_reward,
-                    data.episode_length,
-                    data.terminal_reward,
-                    data.result
-                );
-            }
+            this.onAction?.(data.action, data.value);
         } catch (e) {
             console.error('Error parsing message:', e);
         }
@@ -84,15 +63,9 @@ export class AgentWebSocket {
         }
     }
 
-    sendObservation(observation: Observation): void {
+    sendStep(step: StepResult): void {
         if (this.ws && this._connected) {
-            this.ws.send(JSON.stringify({ type: 'observation', observation }));
-        }
-    }
-
-    sendTerminated(result: string, observation: Observation): void {
-        if (this.ws && this._connected) {
-            this.ws.send(JSON.stringify({ type: 'terminated', result, observation }));
+            this.ws.send(JSON.stringify({ type: 'step', ...step }));
         }
     }
 }

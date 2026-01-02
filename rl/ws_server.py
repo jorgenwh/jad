@@ -18,52 +18,16 @@ from pathlib import Path
 
 from observations import obs_to_array, get_normalize_mask
 from vec_normalize import RunningNormalizer
-from env import Observation, JadState, HealerState, TerminationState
+from env import Observation, JadState, HealerState
 from config import JadConfig
-from rewards import compute_reward, list_reward_functions
-
-
-def get_action_names(config: JadConfig) -> dict[int, str]:
-    """Generate action names based on config."""
-    actions = {0: "DO_NOTHING"}
-    idx = 1
-
-    # Aggro Jad actions
-    for i in range(config.jad_count):
-        actions[idx] = f"AGGRO_JAD_{i+1}"
-        idx += 1
-
-    # Aggro healer actions
-    for jad_idx in range(config.jad_count):
-        for healer_idx in range(config.healers_per_jad):
-            actions[idx] = f"AGGRO_H{jad_idx+1}.{healer_idx+1}"
-            idx += 1
-
-    # Prayer/potion actions
-    actions[idx] = "TOGGLE_PROTECT_MELEE"
-    actions[idx + 1] = "TOGGLE_PROTECT_MISSILES"
-    actions[idx + 2] = "TOGGLE_PROTECT_MAGIC"
-    actions[idx + 3] = "TOGGLE_RIGOUR"
-    actions[idx + 4] = "DRINK_BASTION"
-    actions[idx + 5] = "DRINK_SUPER_RESTORE"
-    actions[idx + 6] = "DRINK_SARA_BREW"
-
-    return actions
 
 
 class AgentServer:
     def __init__(self, checkpoint_path: str, jad_count: int = 1,
-                 healers_per_jad: int = 3, reward_type: str = "default"):
+                 healers_per_jad: int = 3):
         self.model = None
         self.lstm_state = None
         self.config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
-        self.action_names = get_action_names(self.config)
-        self.reward_type = reward_type
-
-        # Reward tracking
-        self.prev_obs: Observation | None = None
-        self.episode_length = 0
-        self.cumulative_reward = 0.0
 
         self._load_model(checkpoint_path)
 
@@ -156,23 +120,19 @@ class AgentServer:
             starting_super_restore_doses=obs_dict.get("starting_super_restore_doses", 4),
         )
 
-    def get_action(self, obs_dict: dict) -> tuple[int, float, list, Observation]:
-        """Get action, value, processed observation, and parsed Observation from observation dictionary."""
+    def get_action(self, obs_dict: dict) -> tuple[int, float]:
+        """Get action and value estimate from observation dictionary."""
         obs = self._parse_observation(obs_dict)
 
         # Convert to array
         obs_array = obs_to_array(obs, self.config)
 
         # Normalize only continuous features (matching training)
-        # Both custom and SB3 models now use external normalization
         result = obs_array.copy()
         continuous = obs_array[self.normalize_mask]
         normalized_continuous = self.obs_normalizer.normalize(continuous)
         result[self.normalize_mask] = normalized_continuous
         obs_array = result
-
-        # Store processed array for debugging
-        processed_obs = obs_array.tolist()
 
         # Get action from model
         action, self.lstm_state = self.model.predict(
@@ -186,9 +146,6 @@ class AgentServer:
         try:
             if self.lstm_state is not None:
                 obs_tensor = torch.as_tensor(obs_array).float().unsqueeze(0).to(self.model.device)
-                # LSTM states from predict: (hidden_list, cell_list)
-                # Each list contains arrays of shape (n_envs, hidden_size)
-                # predict_values expects (hidden, cell) each with shape (n_layers, n_envs, hidden_size)
                 hidden = torch.as_tensor(self.lstm_state[0][0]).unsqueeze(0).to(self.model.device)
                 cell = torch.as_tensor(self.lstm_state[1][0]).unsqueeze(0).to(self.model.device)
                 lstm_states = (hidden, cell)
@@ -197,18 +154,14 @@ class AgentServer:
                     obs_tensor, lstm_states, episode_starts
                 )
                 value = float(value.item())
-        except Exception as e:
-            # Value extraction failed, keep default 0.0
+        except Exception:
             pass
 
-        return int(action), value, processed_obs, obs
+        return int(action), value
 
     def reset_state(self):
-        """Reset LSTM state and reward tracking for new episode."""
+        """Reset LSTM state for new episode."""
         self.lstm_state = None
-        self.prev_obs = None
-        self.episode_length = 0
-        self.cumulative_reward = 0.0
 
     async def handle_connection(self, websocket):
         """Handle a WebSocket connection from the browser."""
@@ -219,78 +172,19 @@ class AgentServer:
                 try:
                     data = json.loads(message)
 
-                    if data.get("type") == "observation":
+                    if data.get("type") == "step":
                         obs_dict = data.get("observation", {})
-                        action, value, processed_obs, obs = self.get_action(obs_dict)
+                        terminated = data.get("terminated", False)
 
-                        # Compute reward using same function as training
-                        step_reward = compute_reward(
-                            obs=obs,
-                            prev_obs=self.prev_obs,
-                            termination=TerminationState.ONGOING,
-                            episode_length=self.episode_length,
-                            reward_type=self.reward_type,
-                        )
-                        self.cumulative_reward += step_reward
-                        self.episode_length += 1
-                        self.prev_obs = obs
-
-                        # Generate action names dynamically based on server config
-                        action_names = get_action_names(self.config)
-
-                        response = {
-                            "type": "action",
-                            "action": action,
-                            "action_name": action_names.get(action, "UNKNOWN"),
-                            "value": value,
-                            "step_reward": step_reward,
-                            "cumulative_reward": self.cumulative_reward,
-                            "episode_length": self.episode_length,
-                            "observation": obs_dict,  # Original dict for readable display
-                            "processed_obs": processed_obs,  # Actual array fed to model
-                        }
-                        await websocket.send(json.dumps(response))
+                        if terminated:
+                            print("Episode ended")
+                            self.reset_state()
+                        else:
+                            action, value = self.get_action(obs_dict)
+                            await websocket.send(json.dumps({"action": action, "value": value}))
 
                     elif data.get("type") == "reset":
                         print("Episode reset")
-                        self.reset_state()
-                        await websocket.send(json.dumps({"type": "ready"}))
-
-                    elif data.get("type") == "terminated":
-                        result = data.get("result", "unknown")
-                        obs_dict = data.get("observation", {})
-
-                        # Compute terminal reward
-                        terminal_reward = 0.0
-                        if obs_dict:
-                            obs = self._parse_observation(obs_dict)
-                            if result == "player_died":
-                                termination = TerminationState.PLAYER_DIED
-                            elif result == "jad_killed":
-                                termination = TerminationState.JAD_KILLED
-                            else:
-                                termination = TerminationState.TRUNCATED
-
-                            terminal_reward = compute_reward(
-                                obs=obs,
-                                prev_obs=self.prev_obs,
-                                termination=termination,
-                                episode_length=self.episode_length,
-                                reward_type=self.reward_type,
-                            )
-                            self.cumulative_reward += terminal_reward
-
-                        print(f"Episode ended: {result}, total reward: {self.cumulative_reward:.1f}")
-
-                        # Send final reward back to browser
-                        await websocket.send(json.dumps({
-                            "type": "terminated_ack",
-                            "result": result,
-                            "terminal_reward": terminal_reward,
-                            "cumulative_reward": self.cumulative_reward,
-                            "episode_length": self.episode_length,
-                        }))
-
                         self.reset_state()
 
                 except json.JSONDecodeError:
@@ -338,21 +232,12 @@ async def main():
         default=3,
         help="Number of healers per Jad (0-5, default: 3)",
     )
-    parser.add_argument(
-        "--reward-func",
-        type=str,
-        default="default",
-        choices=list_reward_functions(),
-        help=f"Reward function to use (default: default). Available: {list_reward_functions()}",
-    )
     args = parser.parse_args()
 
-    print(f"Using reward function: {args.reward_func}")
     server = AgentServer(
         args.checkpoint,
         jad_count=args.jad_count,
         healers_per_jad=args.healers_per_jad,
-        reward_type=args.reward_func,
     )
     await server.start(port=args.port)
 

@@ -8,14 +8,6 @@ export const DEFAULT_CONFIG: JadConfig = {
     healersPerJad: 3,
 };
 
-/**
- * Get action count for given Jad configuration.
- * Actions: DO_NOTHING + N*AGGRO_JAD + N*H*AGGRO_HEALER + 7 prayers/potions
- */
-export function getActionCount(config: JadConfig): number {
-    return 1 + config.jadCount + config.jadCount * config.healersPerJad + 7;
-}
-
 export interface JadState {
     hp: number;
     attack: number;  // 0=none, 1=mage, 2=range, 3=melee
@@ -65,3 +57,14 @@ export interface Observation {
     starting_super_restore_doses: number;
 }
 
+export enum TerminationState {
+    ONGOING = 'ongoing',
+    PLAYER_DIED = 'player_died',
+    JAD_KILLED = 'jad_killed',
+}
+
+export interface StepResult {
+    observation: Observation;
+    reward: number;
+    terminated: boolean;
+}

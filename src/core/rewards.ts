@@ -1,11 +1,4 @@
-import { Observation, HealerTarget } from './types';
-
-export enum TerminationState {
-    ONGOING = 'ongoing',
-    PLAYER_DIED = 'player_died',
-    JAD_KILLED = 'jad_killed',
-    TRUNCATED = 'truncated',
-}
+import { Observation, HealerTarget, TerminationState } from './types';
 
 export type RewardFunction = (
     obs: Observation,
@@ -137,10 +130,7 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
             reward -= episodeLength * 0.1; // Faster kills are better
             break;
         case TerminationState.PLAYER_DIED:
-            reward -= 200.0; // Death is catastrophic
-            break;
-        case TerminationState.TRUNCATED:
-            reward -= 150.0; // Timeout is worse than dying
+            reward -= 200.0;
             break;
     }
 
@@ -152,7 +142,6 @@ registerRewardFunction('sparse', (_obs, _prevObs, termination, _episodeLength) =
         case TerminationState.JAD_KILLED:
             return 1;
         case TerminationState.PLAYER_DIED:
-        case TerminationState.TRUNCATED:
             return -1;
         default:
             return 0;
@@ -209,9 +198,6 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
             break;
         case TerminationState.PLAYER_DIED:
             reward -= 200.0;
-            break;
-        case TerminationState.TRUNCATED:
-            reward -= 150.0;
             break;
     }
 

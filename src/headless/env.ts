@@ -4,10 +4,12 @@ import {
     JadConfig,
     DEFAULT_CONFIG,
     Observation,
+    StepResult,
     countPotionDoses,
     buildObservation,
     executeAction,
     computeReward,
+    checkTermination,
     TerminationState,
 } from '../core';
 
@@ -18,12 +20,6 @@ export interface EnvConfig {
 const DEFAULT_ENV_CONFIG: EnvConfig = {
     rewardFunc: 'default',
 };
-
-export interface StepResult {
-    observation: Observation;
-    reward: number;
-    terminated: boolean;
-}
 
 export class HeadlessEnv {
     private world: World;
@@ -109,13 +105,14 @@ export class HeadlessEnv {
         this.world.tickWorld(1);
         this.episodeLength++;
 
+        const jadRegion = this.region as JadRegion;
         const observation = buildObservation(
             this.player,
-            this.region as JadRegion,
+            jadRegion,
             this.jadConfig,
             this.startingDoses
         );
-        const termination = this.getTerminationState();
+        const termination = checkTermination(this.player, jadRegion, this.jadConfig);
         const reward = computeReward(
             observation,
             this.prevObservation,
@@ -127,31 +124,7 @@ export class HeadlessEnv {
         return {
             observation,
             reward,
-            terminated: termination === TerminationState.PLAYER_DIED || termination === TerminationState.JAD_KILLED,
+            terminated: termination !== TerminationState.ONGOING,
         };
-    }
-
-    private getTerminationState(): TerminationState {
-        // Check player death
-        const playerDead = this.player.dying > 0 || this.player.currentStats.hitpoint <= 0;
-        if (playerDead) {
-            return TerminationState.PLAYER_DIED;
-        }
-
-        // Check if ALL Jads are dead
-        const jadRegion = this.region as JadRegion;
-        let allJadsDead = true;
-        for (let i = 0; i < this.jadConfig.jadCount; i++) {
-            const jad = jadRegion.getJad(i);
-            if (jad && jad.currentStats.hitpoint > 0 && jad.dying === -1) {
-                allJadsDead = false;
-                break;
-            }
-        }
-        if (allJadsDead) {
-            return TerminationState.JAD_KILLED;
-        }
-
-        return TerminationState.ONGOING;
     }
 }
