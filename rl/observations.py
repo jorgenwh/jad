@@ -13,7 +13,7 @@ MAX_JAD_HP = 350
 MAX_HEALER_HP = 90
 
 
-def get_obs_dim(config: JadConfig) -> int:
+def get_observation_dim(config: JadConfig) -> int:
     jad_count = config.jad_count
     healers_per_jad = config.healers_per_jad
     healer_count = jad_count * healers_per_jad
@@ -47,7 +47,7 @@ def get_continuous_feature_count(config: JadConfig) -> int:
 
 def get_normalize_mask(config: JadConfig) -> np.ndarray:
     """Get mask for which features should be normalized (True = normalize)."""
-    obs_dim = get_obs_dim(config)
+    obs_dim = get_observation_dim(config)
     continuous_count = get_continuous_feature_count(config)
 
     # Continuous features first, then one-hot/binary
@@ -85,7 +85,7 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
         config: Jad configuration (jad_count, healers_per_jad)
 
     Returns:
-        Array of shape (obs_dim,) where obs_dim = get_obs_dim(config)
+        Array of shape (observation_dim,) where obs_dim = get_obs_dim(config)
     """
     jad_count = config.jad_count
     healers_per_jad = config.healers_per_jad
@@ -170,7 +170,7 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
 # For backwards compatibility with 1-Jad config
 def get_default_obs_dim() -> int:
     """Get observation dimension for default 1-Jad, 3-healer config."""
-    return get_obs_dim(JadConfig(jad_count=1, healers_per_jad=3))
+    return get_observation_dim(JadConfig(jad_count=1, healers_per_jad=3))
 
 
 # Legacy constant for backwards compatibility

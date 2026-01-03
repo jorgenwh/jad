@@ -8,8 +8,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from jad_types import JadConfig
 from utils import get_action_count
-from jad_gymnasium_env import make_jad_env
-from observations import get_obs_dim
+from jad_gym_env import make_jad_env
+from observations import get_observation_dim
 from vec_normalize import SelectiveVecNormalize
 
 # Available reward functions (defined in TypeScript src/core/rewards.ts)
@@ -172,7 +172,7 @@ def train(
     """
     # Create config
     config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
-    obs_dim = get_obs_dim(config)
+    obs_dim = get_observation_dim(config)
     action_count = get_action_count(config)
 
     print(f"Configuration: {jad_count} Jad(s), {healers_per_jad} healers per Jad")

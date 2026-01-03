@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from jad_types import JadConfig, Observation, StepResult, JadState, HealerState
-from utils import get_action_count
 
 
 class EnvProcessWrapper:
@@ -17,10 +16,6 @@ class EnvProcessWrapper:
     @property
     def config(self) -> JadConfig:
         return self._config
-
-    @property
-    def action_space(self) -> int:
-        return get_action_count(self._config)
 
     def reset(self) -> Observation:
         self._start_process()
