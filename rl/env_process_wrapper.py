@@ -7,12 +7,12 @@ from jad_types import JadConfig, Observation, StepResult, JadState, HealerState
 from utils import get_action_count
 
 
-class JadEnv:
-    def __init__(self, config: JadConfig | None = None, reward_type: str = "default"):
+class EnvProcessWrapper:
+    def __init__(self, config: JadConfig | None = None, reward_func: str = "default"):
         self._proc: subprocess.Popen | None = None
         self._script_dir = Path(__file__).parent
         self._config = config or JadConfig()
-        self._reward_type = reward_type
+        self._reward_func = reward_func
 
     @property
     def config(self) -> JadConfig:
@@ -59,7 +59,7 @@ class JadEnv:
         env = os.environ.copy()
         env["JAD_COUNT"] = str(self._config.jad_count)
         env["HEALERS_PER_JAD"] = str(self._config.healers_per_jad)
-        env["REWARD_FUNC"] = self._reward_type
+        env["REWARD_FUNC"] = self._reward_func
 
         self._proc = subprocess.Popen(
             ["node", str(bootstrap_path)],

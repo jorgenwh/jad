@@ -46,6 +46,8 @@ export class AgentController {
         };
 
         this.ws.onAction = (action, value) => {
+            console.log(`Received action: ${action} (${getActionName(action, this.config)})`);
+
             executeAction(action, this.player, this.jadRegion, this.config);
 
             const obs = buildObservation(

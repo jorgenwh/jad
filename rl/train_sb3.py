@@ -193,7 +193,7 @@ def train(
 
     # Note: DummyVecEnv is often faster than SubprocVecEnv for fast environments
     # because it avoids inter-process communication overhead.
-    venv = DummyVecEnv([make_jad_env(config, reward_type=reward_func) for _ in range(num_envs)])
+    venv = DummyVecEnv([make_jad_env(config, reward_func=reward_func) for _ in range(num_envs)])
 
     # Wrap with SelectiveVecNormalize for shared observation normalization
     # This normalizes only continuous features, leaving one-hot encodings unchanged

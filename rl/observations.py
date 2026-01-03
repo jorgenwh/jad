@@ -14,30 +14,17 @@ MAX_HEALER_HP = 90
 
 
 def get_obs_dim(config: JadConfig) -> int:
-    """
-    Calculate observation dimension for given Jad configuration.
-
-    Structure:
-    - Player continuous: 9 (hp, prayer, ranged, def, 3 potion doses, x, y)
-    - Player aggro one-hot: 1 + jad_count + jad_count * healers_per_jad
-    - Active prayer one-hot: 4
-    - Per-Jad continuous: 3 (hp, x, y) * jad_count
-    - Per-Jad attack one-hot: 4 * jad_count (none/mage/range/melee)
-    - Per-Healer continuous: 3 (hp, x, y) * jad_count * healers_per_jad
-    - Per-Healer target one-hot: 3 * jad_count * healers_per_jad
-    - Binary: 2 (rigour_active, healers_spawned)
-    """
     jad_count = config.jad_count
     healers_per_jad = config.healers_per_jad
-    total_healers = jad_count * healers_per_jad
+    healer_count = jad_count * healers_per_jad
 
     player_continuous = 9
-    player_target_onehot = 1 + jad_count + total_healers
+    player_target_onehot = 1 + jad_count + healer_count
     active_prayer_onehot = 4
     jad_continuous = 3 * jad_count  # hp, x, y per jad
     jad_attack_onehot = 4 * jad_count
-    healer_continuous = 3 * total_healers
-    healer_target_onehot = 3 * total_healers
+    healer_continuous = 3 * healer_count
+    healer_target_onehot = 3 * healer_count
     binary = 2
 
     return (player_continuous + player_target_onehot + active_prayer_onehot +

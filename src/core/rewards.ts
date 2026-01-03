@@ -112,6 +112,14 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
         reward -= damageTaken * 0.1;
     }
 
+    // Reward for dealing damage to Jads
+    for (let i = 0; i < obs.jads.length; i++) {
+        const jadDamage = prevObs.jads[i].hp - obs.jads[i].hp;
+        if (jadDamage > 0) {
+            reward += jadDamage * 0.2;
+        }
+    }
+
     // Penalty for Jad healing
     for (let i = 0; i < obs.jads.length; i++) {
         const jadHealed = obs.jads[i].hp - prevObs.jads[i].hp;
@@ -175,6 +183,14 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
     const damageTaken = prevObs.player_hp - obs.player_hp;
     if (damageTaken > 0) {
         reward -= damageTaken * 0.1;
+    }
+
+    // Reward for dealing damage to Jads
+    for (let i = 0; i < obs.jads.length; i++) {
+        const jadDamage = prevObs.jads[i].hp - obs.jads[i].hp;
+        if (jadDamage > 0) {
+            reward += jadDamage * 0.2;
+        }
     }
 
     // Penalty for Jad healing

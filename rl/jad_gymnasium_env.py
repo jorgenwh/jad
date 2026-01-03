@@ -5,7 +5,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from jad_types import JadConfig
 from utils import get_action_count
-from env import JadEnv
+from env_process_wrapper import EnvProcessWrapper
 from observations import obs_to_array, get_obs_dim
 
 
@@ -21,20 +21,25 @@ TRUNCATION_PENALTIES = {
 class JadGymnasiumEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, config: JadConfig | None = None, reward_type: str = "default",
-                 training: bool = True):
+    def __init__(
+        self,
+        config: JadConfig | None = None,
+        reward_func: str = "default",
+        training: bool = True
+    ):
         super().__init__()
 
         self._config = config or JadConfig()
-        self._reward_type = reward_type
+        self._reward_func = reward_func
         self._training = training
+
         # Scale episode length by jad count; no limit for evaluation
         self._max_episode_length = (
             BASE_EPISODE_LENGTH * self._config.jad_count if training else float('inf')
         )
-        self.env = JadEnv(config=self._config, reward_type=reward_type)
 
-        # Get dynamic dimensions
+        self.env = EnvProcessWrapper(config=self._config, reward_func=reward_func)
+
         obs_dim = get_obs_dim(self._config)
         action_count = get_action_count(self._config)
 
@@ -79,7 +84,7 @@ class JadGymnasiumEnv(gym.Env):
         truncated = False
         if not result.terminated and self.episode_length >= self._max_episode_length:
             truncated = True
-            reward += TRUNCATION_PENALTIES.get(self._reward_type, -150.0)
+            reward += TRUNCATION_PENALTIES.get(self._reward_func, -150.0)
 
         # Return raw observation - normalization handled by SelectiveVecNormalize wrapper
         obs_array = obs_to_array(self.current_obs, self._config)
@@ -98,11 +103,11 @@ class JadGymnasiumEnv(gym.Env):
         self.env.close()
 
 
-def make_jad_env(config: JadConfig | None = None, reward_type: str = "default",
+def make_jad_env(config: JadConfig | None = None, reward_func: str = "default",
                  training: bool = True):
     """Factory function for creating JadGymnasiumEnv instances wrapped with Monitor"""
     def _init():
-        env = JadGymnasiumEnv(config=config, reward_type=reward_type, training=training)
+        env = JadGymnasiumEnv(config=config, reward_func=reward_func, training=training)
         # Monitor wrapper adds episode stats (r, l, t) to info dict
         return Monitor(env)
     return _init
