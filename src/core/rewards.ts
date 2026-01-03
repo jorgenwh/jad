@@ -46,11 +46,23 @@ function healerTagReward(obs: Observation, prevObs: Observation): number {
     return reward;
 }
 
+function healerTargetingJadPenalty(obs: Observation, penaltyPerHealer: number): number {
+    let penalty = 0;
+
+    for (const healer of obs.healers) {
+        if (healer.target === HealerTarget.JAD) {
+            penalty += penaltyPerHealer;
+        }
+    }
+
+    return penalty;
+}
+
 function prayerLandingReward(
     obs: Observation,
     prevObs: Observation,
-    correct: number = 2.5,
-    wrong: number = -7.5
+    correct: number,
+    wrong: number
 ): number {
     let reward = 0;
 
@@ -120,15 +132,10 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
         }
     }
 
-    // Penalty for Jad healing
-    for (let i = 0; i < obs.jads.length; i++) {
-        const jadHealed = obs.jads[i].hp - prevObs.jads[i].hp;
-        if (jadHealed > 0) {
-            reward -= jadHealed * 0.3;
-        }
-    }
+    // Penalty for each healer targeting Jad (encourages tagging healers)
+    reward -= healerTargetingJadPenalty(obs, 0.3);
 
-    // Reward for tagging healers to stop them from healing Jads
+    // Reward for tagging healers (one-time bonus when healer switches from Jad to player)
     reward += healerTagReward(obs, prevObs);
 
     // Terminal rewards
@@ -193,15 +200,10 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         }
     }
 
-    // Penalty for Jad healing
-    for (let i = 0; i < obs.jads.length; i++) {
-        const jadHealed = obs.jads[i].hp - prevObs.jads[i].hp;
-        if (jadHealed > 0) {
-            reward -= jadHealed * 0.3;
-        }
-    }
+    // Penalty for each healer targeting Jad (encourages tagging healers)
+    reward -= healerTargetingJadPenalty(obs, 1.0);
 
-    // Reward for tagging healers to stop them from healing Jads
+    // Reward for tagging healers (one-time bonus when healer switches from Jad to player)
     reward += healerTagReward(obs, prevObs);
 
     // Reward for each Jad killed

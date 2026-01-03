@@ -291,7 +291,7 @@ def main():
         "--num-envs",
         type=int,
         default=8,
-        help="Number of parallel environments (default: 4)",
+        help="Number of parallel environments (default: 8)",
     )
     parser.add_argument(
         "--timesteps",
@@ -309,13 +309,13 @@ def main():
         "--lstm-hidden-size",
         type=int,
         default=128,
-        help="LSTM hidden layer size (default: 64)",
+        help="LSTM hidden layer size (default: 128)",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=128,
-        help="Minibatch size for PPO updates (default: 64)",
+        help="Minibatch size for PPO updates (default: 128)",
     )
     parser.add_argument(
         "--checkpoint-dir",
