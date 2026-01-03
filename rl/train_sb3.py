@@ -184,9 +184,9 @@ def train(
     checkpoint_path = Path(checkpoint_dir)
     checkpoint_path.mkdir(exist_ok=True)
 
-    # Checkpoint paths include jad count for separate models
-    model_save_path = checkpoint_path / f"best_sb3_{jad_count}jad"
-    normalizer_path = checkpoint_path / f"normalizer_sb3_{jad_count}jad.npz"
+    # Checkpoint paths include jad count and healer count for separate models
+    model_save_path = checkpoint_path / f"best_sb3_{jad_count}jad_{healers_per_jad}heal"
+    normalizer_path = checkpoint_path / f"normalizer_sb3_{jad_count}jad_{healers_per_jad}heal.npz"
 
     # Create vectorized environments
     print(f"Creating {num_envs} parallel environments...")
