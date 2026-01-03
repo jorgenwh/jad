@@ -1,5 +1,5 @@
 import numpy as np
-from jad_types import JadConfig, Observation
+from jad.types import JadConfig, Observation
 
 
 # Normalization constants

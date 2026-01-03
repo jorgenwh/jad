@@ -6,11 +6,9 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
-from jad_types import JadConfig
-from utils import get_action_count
-from jad_gym_env import make_jad_env
-from observations import get_observation_dim
-from vec_normalize import SelectiveVecNormalize
+from jad import JadConfig, get_action_count
+from jad.env import make_jad_env, get_observation_dim, SelectiveVecNormalize
+
 
 # Available reward functions (defined in TypeScript src/core/rewards.ts)
 REWARD_FUNCTIONS = ['default', 'sparse', 'multijad']

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jad-trainer"
+version = "0.1.0"
+description = "Training environment for OSRS Jad fight simulation"
+requires-python = ">=3.11"
+dependencies = [
+    "gymnasium>=0.29.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+    "stable-baselines3>=2.0.0",
+    "sb3-contrib>=2.0.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+jad-train = "scripts.train_ppo:main"
+jad-serve = "scripts.serve_agent:main"
+jad-test-env = "scripts.test_env:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/jad", "python/scripts", "python/data", "python/models", "python/training"]
+
+[tool.hatch.build.targets.wheel.sources]
+"python" = ""
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

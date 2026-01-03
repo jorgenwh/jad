@@ -6,9 +6,8 @@ from websockets.asyncio.server import serve
 from sb3_contrib import RecurrentPPO
 from pathlib import Path
 
-from observations import obs_to_array, get_normalize_mask
-from vec_normalize import RunningNormalizer
-from jad_types import JadConfig, Observation, JadState, HealerState
+from jad import JadConfig, JadState, HealerState, Observation
+from jad.env import obs_to_array, get_normalize_mask, RunningNormalizer
 
 
 class AgentServer:

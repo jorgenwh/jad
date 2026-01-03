@@ -1,24 +1,16 @@
-#!/usr/bin/env python3
-"""Interactive environment tester for debugging and exploration."""
-
 import json
 import os
-import sys
 from dataclasses import asdict
 
-from env_process_wrapper import EnvProcessWrapper
-from jad_types import JadConfig
-from observations import obs_to_array
-from utils import get_action_count, get_action_name
+from jad import JadConfig, get_action_count, get_action_name
+from jad.env import EnvProcessWrapper, obs_to_array
 
 
 def clear_screen():
-    """Clear the terminal screen."""
     os.system('clear' if os.name != 'nt' else 'cls')
 
 
-def format_observation(obs, config: JadConfig) -> str:
-    """Format observation in a readable format."""
+def format_observation(obs) -> str:
     lines = []
     lines.append("=== Observation ===")
     lines.append(f"Player: hp={obs.player_hp}, prayer={obs.player_prayer}, "
@@ -218,7 +210,7 @@ def main():
     obs = env.reset()
     step = 0
     cumulative_reward = 0.0
-    output = format_observation(obs, config)
+    output = format_observation(obs)
 
     try:
         while True:
@@ -234,7 +226,7 @@ def main():
             if cmd in ('q', 'quit', 'exit'):
                 break
             elif cmd in ('o', 'obs'):
-                output = format_observation(obs, config)
+                output = format_observation(obs)
             elif cmd in ('v', 'vec', 'vector'):
                 output = format_vector(obs, config, cumulative_reward)
             elif cmd in ('j', 'json'):
@@ -245,7 +237,7 @@ def main():
                 obs = env.reset()
                 step = 0
                 cumulative_reward = 0.0
-                output = "Environment reset.\n\n" + format_observation(obs, config)
+                output = "Environment reset.\n\n" + format_observation(obs)
             elif cmd.isdigit():
                 action = int(cmd)
                 action_count = get_action_count(config)
@@ -264,7 +256,7 @@ def main():
                     f"Reward: {result.reward:.4f}",
                     f"Terminated: {result.terminated}",
                     "",
-                    format_observation(obs, config),
+                    format_observation(obs),
                 ]
 
                 if result.terminated:

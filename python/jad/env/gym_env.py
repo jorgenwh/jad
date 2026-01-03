@@ -3,10 +3,10 @@ import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
 
-from jad_types import JadConfig
-from utils import get_action_count
-from env_process_wrapper import EnvProcessWrapper
-from observations import obs_to_array, get_observation_dim
+from jad.types import JadConfig
+from jad.actions import get_action_count
+from jad.env.process_wrapper import EnvProcessWrapper
+from jad.env.observations import obs_to_array, get_observation_dim
 
 
 BASE_EPISODE_LENGTH = 300  # Per-jad episode length cap during training

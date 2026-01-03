@@ -2,8 +2,8 @@ import numpy as np
 from stable_baselines3.common.vec_env import VecEnvWrapper
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from jad_types import JadConfig
-from observations import get_normalize_mask, NORMALIZE_MASK
+from jad.types import JadConfig
+from jad.env.observations import get_normalize_mask, NORMALIZE_MASK
 
 
 class RunningNormalizer:

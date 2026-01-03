@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from jad_types import JadConfig, Observation, StepResult, JadState, HealerState
+from jad.types import JadConfig, Observation, StepResult, JadState, HealerState
 
 
 class EnvProcessWrapper:
@@ -48,7 +48,8 @@ class EnvProcessWrapper:
         if self._proc is not None:
             return
 
-        bootstrap_path = self._script_dir / "../dist-headless/headless/bootstrap.js"
+        # Navigate from python/jad/env/ to dist-headless/
+        bootstrap_path = self._script_dir / "../../../dist-headless/headless/bootstrap.js"
 
         # Set environment variables for config
         env = os.environ.copy()
