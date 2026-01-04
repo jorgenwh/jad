@@ -1,5 +1,6 @@
 import { JadRegion, JadConfig } from '../core';
 import { AgentController } from './agent-controller';
+import { RecordingController } from './recording';
 import { Settings, World, Trainer, Viewport, ImageLoader, MapController, Assets } from 'osrs-sdk';
 
 Settings.readFromStorage();
@@ -29,12 +30,23 @@ Trainer.setPlayer(player);
 // Agent controller for AI play
 let agentController: AgentController | null = null;
 
-// Check URL params for agent mode
+// Recording controller for behavioral cloning data collection
+let recordingController: RecordingController | null = null;
+
+// Check URL params for agent mode and recording mode
 const agentMode = urlParams.get('agent') === 'true';
+const recordMode = urlParams.get('record') === 'true';
+
+if (agentMode && recordMode) {
+    throw new Error('Cannot enable both agent mode and recording mode simultaneously');
+}
 
 if (agentMode) {
     console.log('Agent mode enabled - will connect to WebSocket server');
     agentController = new AgentController(player, region, config);
+} else if (recordMode) {
+    console.log('Recording mode enabled - will capture gameplay for behavioral cloning');
+    recordingController = new RecordingController(player, region, world, config);
 }
 
 let imagesReady = false;
@@ -65,8 +77,12 @@ function checkStart() {
             // Start normally as a fallback if agent connection fails
             world.startTicking();
         });
+    } else if (recordingController) {
+        // Start recording mode
+        recordingController.start();
+        world.startTicking();
     } else {
-        // No agent, start normally
+        // No agent or recording, start normally
         world.startTicking();
     }
 }
