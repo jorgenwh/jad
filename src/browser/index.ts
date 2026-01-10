@@ -4,6 +4,7 @@ import { RecordingController } from './recording';
 import { Settings, World, Trainer, Viewport, ImageLoader, MapController, Assets } from 'osrs-sdk';
 
 Settings.readFromStorage();
+Settings.tickMs = 600;
 
 // Parse config from URL params (e.g., ?jads=3&healers=3)
 const urlParams = new URLSearchParams(window.location.search);

@@ -182,9 +182,9 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
     const prayerWrongPenalty = attackCount > 1 ? -1.5 : -3.0;
     reward += prayerLandingReward(obs, prevObs, 1.5, prayerWrongPenalty);
 
-    // Small penalty for not being in combat
+    // Significant penalty for not being in combat - prevents stalling
     if (obs.player_target === 0) {
-        reward -= 0.3;
+        reward -= 1.0;
     }
 
     // Penalty for rigour not active
@@ -192,14 +192,15 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         reward -= 0.1;
     }
 
+    // Time pressure: small increasing penalty to discourage stalling
+    // At tick 100: -0.2, at tick 300: -0.6, at tick 500: -1.0
+    reward -= episodeLength * 0.002;
+
     // Count healers targeting Jad vs player
     let healersOnJad = 0;
-    let healersOnPlayer = 0;
     for (const healer of obs.healers) {
         if (healer.target === HealerTarget.JAD) {
             healersOnJad++;
-        } else if (healer.target === HealerTarget.PLAYER) {
-            healersOnPlayer++;
         }
     }
 
@@ -228,41 +229,33 @@ registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) =>
         }
     }
 
-    // CRITICAL: Very heavy penalty for each healer targeting Jad
     // Each healer heals ~1 HP/tick, so 6 healers = 6 HP/tick = massive DPS loss
     // Penalty scales with number of healers to make it urgent
     const healerPenaltyPerHealer = 1.5 + (healersOnJad * 0.3); // 1.5 base, +0.3 per additional
     reward -= healersOnJad * healerPenaltyPerHealer;
 
-    // Large one-time reward for tagging healers
+    // One-time reward for tagging healers (when healer switches from Jad to player)
     reward += healerTagReward(obs, prevObs) * 3.0; // 15 per healer tagged
 
-    // Bonus for having ALL healers tagged (huge efficiency gain)
-    if (obs.healers.length > 0 && healersOnJad === 0) {
-        reward += 2.0; // Continuous bonus while all healers are off Jads
-    }
+    // NOTE: Removed continuous +2.0 bonus for healers tagged - it allowed farming without killing Jads
 
-    // Large reward for each Jad killed (reduces incoming damage)
-    // First Jad kill is especially valuable as it halves incoming attacks
-    const jadsKilled = jadKillReward(obs, prevObs, 1.0);
-    const aliveJadsBefore = prevObs.jads.filter(j => j.hp > 0).length;
-    if (jadsKilled > 0) {
-        // Exponential reward: first kill = 200, second = 100, etc.
-        reward += 200.0 * (aliveJadsBefore / obs.jads.length);
-    }
+    // Large reward for each Jad killed
+    reward += jadKillReward(obs, prevObs, 200.0);
 
-    // Terminal rewards - scale death penalty by progress made
+    // Terminal rewards
     switch (termination) {
         case TerminationState.JAD_KILLED:
-            reward += 50.0; // Bonus for full clear
+            // Big bonus for winning, with time bonus for faster kills
+            reward += 100.0;
+            reward += Math.max(0, (600 - episodeLength) * 0.2); // Up to +120 for fast kills
             break;
         case TerminationState.PLAYER_DIED:
-            // Reduced penalty if progress was made (Jads damaged)
-            const totalJadHpRemaining = obs.jads.reduce((sum, jad) => sum + jad.hp, 0);
+            // Penalty reduced by progress made (damage dealt to Jads)
+            const totalJadHpRemaining = obs.jads.reduce((sum, jad) => sum + Math.max(0, jad.hp), 0);
             const maxJadHp = obs.jads.length * 350;
             const damageDealt = maxJadHp - totalJadHpRemaining;
             const progressBonus = damageDealt * 0.1; // Up to 70 bonus for dealing 700 damage
-            reward -= 100.0; // Reduced base death penalty
+            reward -= 100.0;
             reward += progressBonus;
             break;
     }
