@@ -78,11 +78,12 @@ class JadGymEnv(gym.Env):
         obs_array = obs_to_array(obs, self._config)
 
         info = {"raw_reward": reward}
-        if result.terminated:
-            all_jads_dead = all(jad.hp <= 0 for jad in obs.jads)
+        if result.terminated or truncated:
+            jads_killed = sum(1 for jad in obs.jads if jad.hp <= 0)
+            all_jads_dead = jads_killed == len(obs.jads)
             info["outcome"] = "kill" if all_jads_dead else "death"
-        elif truncated:
-            info["outcome"] = "death"
+            info["jads_killed"] = jads_killed
+            info["jad_count"] = len(obs.jads)
 
         return obs_array, reward, result.terminated, truncated, info
 

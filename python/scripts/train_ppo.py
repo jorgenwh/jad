@@ -24,6 +24,7 @@ class EpisodeStatsCallback(BaseCallback):
         self,
         vec_normalize_env: SelectiveVecNormalize,
         num_envs: int,
+        jad_count: int = 1,
         log_interval: int = 100,
         save_path: str = "checkpoints/best_sb3.pt",
         normalizer_path: str = "checkpoints/normalizer_sb3.npz",
@@ -32,6 +33,7 @@ class EpisodeStatsCallback(BaseCallback):
         super().__init__(verbose)
         self.vec_normalize_env = vec_normalize_env
         self.num_envs = num_envs
+        self.jad_count = jad_count
         self.log_interval = log_interval
         self.save_path = save_path
         self.normalizer_path = normalizer_path
@@ -41,8 +43,11 @@ class EpisodeStatsCallback(BaseCallback):
         self.episode_raw_rewards = []
         self.episode_norm_rewards = []
         self.episode_lengths = []
-        self.episode_kills = 0
         self.total_episodes = 0
+
+        # Track jads killed per episode in current block
+        # jads_killed_counts[i] = number of episodes where exactly i jads were killed
+        self.jads_killed_counts = [0] * (jad_count + 1)
 
         # Track per-env normalized reward accumulation
         self.current_norm_rewards = [0.0] * num_envs
@@ -68,9 +73,10 @@ class EpisodeStatsCallback(BaseCallback):
                 self.episode_lengths.append(info["episode"]["l"])
                 self.total_episodes += 1
 
-                # Track kills from our custom info
-                if info.get("outcome") == "kill":
-                    self.episode_kills += 1
+                # Track jads killed from our custom info
+                jads_killed = info.get("jads_killed", 0)
+                if jads_killed <= self.jad_count:
+                    self.jads_killed_counts[jads_killed] += 1
 
                 # Check if we should log (every log_interval episodes)
                 if self.total_episodes % self.log_interval == 0:
@@ -97,21 +103,23 @@ class EpisodeStatsCallback(BaseCallback):
         mean_length = sum(recent_len) / len(recent_len)
         min_raw, max_raw = min(recent_raw), max(recent_raw)
         min_len, max_len = int(min(recent_len)), int(max(recent_len))
-        kills = self.episode_kills
 
-        # Print stats
+        # Calculate time
         elapsed = int(time.time() - self.start_time)
         elapsed_str = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
         start_ep = self.total_episodes - self.log_interval + 1
-        print(
-            f"Episodes {start_ep}-{self.total_episodes} | "
-            f"Raw: {mean_raw_reward:.1f} ({min_raw:.0f}/{max_raw:.0f}) | "
-            f"Norm: {mean_norm_reward:.2f} | "
-            f"Len: {mean_length:.0f} ({min_len}/{max_len}) | "
-            f"Kills: {kills}/{self.log_interval} | "
-            f"Steps: {self.num_timesteps:,} | "
-            f"Time: {elapsed_str}"
-        )
+
+        # Build jads killed summary
+        wins = self.jads_killed_counts[self.jad_count]  # All jads killed = win
+        total_jads_killed = sum(i * count for i, count in enumerate(self.jads_killed_counts))
+        max_possible_kills = self.log_interval * self.jad_count
+
+        # Print multi-line stats
+        print(f"=== Episodes {start_ep}-{self.total_episodes} ===")
+        print(f"  Reward:  {mean_raw_reward:+.1f} avg  (min/max: {min_raw:+.0f}/{max_raw:+.0f})")
+        print(f"  Length:  {mean_length:.0f} avg  (min/max: {min_len}/{max_len})")
+        print(f"  Wins:    {wins}/{self.log_interval}  |  Jad kills: {total_jads_killed}/{max_possible_kills}")
+        print(f"  Steps:   {self.num_timesteps:,}  |  Time: {elapsed_str}")
 
         # Save if this is the best so far (using raw reward for interpretability)
         if mean_raw_reward > self.best_mean_reward:
@@ -119,10 +127,12 @@ class EpisodeStatsCallback(BaseCallback):
             self.model.save(self.save_path)
             # Save normalizer stats alongside the model
             self.vec_normalize_env.save_normalizer(self.normalizer_path)
-            print(f"  [NEW BEST - saved to {self.save_path}]")
+            print(f"  ** NEW BEST - saved to {self.save_path} **")
 
-        # Reset kills counter for next block
-        self.episode_kills = 0
+        print()  # Blank line between updates
+
+        # Reset jads killed counts for next block
+        self.jads_killed_counts = [0] * (self.jad_count + 1)
 
 
 def train(
@@ -245,6 +255,7 @@ def train(
     callback = EpisodeStatsCallback(
         vec_normalize_env=env,
         num_envs=num_envs,
+        jad_count=jad_count,
         log_interval=100,  # Print stats every 100 episodes
         save_path=str(model_save_path),
         normalizer_path=str(normalizer_path),
