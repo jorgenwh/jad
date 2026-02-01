@@ -67,4 +67,5 @@ export interface StepResult {
     observation: Observation;
     reward: number;
     terminated: boolean;
+    valid_action_mask: boolean[];
 }

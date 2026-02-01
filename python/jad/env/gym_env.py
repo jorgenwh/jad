@@ -47,6 +47,7 @@ class JadGymEnv(gym.Env):
         self.action_space = spaces.Discrete(action_count)
 
         self.episode_length = 0
+        self._current_action_mask: np.ndarray = np.ones(action_count, dtype=np.bool_)
 
     @property
     def config(self) -> JadConfig:
@@ -55,10 +56,13 @@ class JadGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        obs = self.env.reset()
+        result = self.env.reset()
         self.episode_length = 0
 
-        obs_array = obs_to_array(obs, self._config)
+        if result.valid_action_mask:
+            self._current_action_mask = np.array(result.valid_action_mask, dtype=np.bool_)
+
+        obs_array = obs_to_array(result.observation, self._config)
         return obs_array, {}
 
     def step(self, action):
@@ -68,6 +72,9 @@ class JadGymEnv(gym.Env):
 
         reward = result.reward
         obs = result.observation
+
+        if result.valid_action_mask:
+            self._current_action_mask = np.array(result.valid_action_mask, dtype=np.bool_)
 
         # Check for truncation (training-only concept)
         truncated = False
@@ -86,6 +93,9 @@ class JadGymEnv(gym.Env):
             info["jad_count"] = len(obs.jads)
 
         return obs_array, reward, result.terminated, truncated, info
+
+    def action_masks(self) -> np.ndarray:
+        return self._current_action_mask
 
     def close(self):
         self.env.close()

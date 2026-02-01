@@ -1,6 +1,6 @@
 import { Player, Potion } from 'osrs-sdk';
 import { JadRegion } from './jad-region';
-import { JadConfig } from './types';
+import { JadConfig, Observation } from './types';
 
 export function togglePrayer(player: Player, prayerName: string): void {
     const prayerController = player.prayerController;
@@ -134,4 +134,73 @@ export function executeAction(
             drinkPotion(player, 'saradomin brew');
             break;
     }
+}
+
+export function getActionSpaceSize(config: JadConfig): number {
+    const numJads = config.jadCount;
+    const numHealers = numJads * config.healersPerJad;
+    // 1 (DO_NOTHING) + numJads + numHealers + 7 (prayers/potions)
+    return 1 + numJads + numHealers + 7;
+}
+
+/**
+ * Builds a boolean mask indicating which actions are valid for the current state.
+ *
+ * Action structure:
+ * - 0: DO_NOTHING (always valid)
+ * - 1..N: AGGRO_JAD_1 through AGGRO_JAD_N (valid if Jad is alive)
+ * - N+1..N+N*H: AGGRO_HEALER (valid if healer is spawned and alive)
+ * - N+N*H+1..N+N*H+7: prayers/potions
+ *   - +0: TOGGLE_PROTECT_MELEE (always valid)
+ *   - +1: TOGGLE_PROTECT_MISSILES (always valid)
+ *   - +2: TOGGLE_PROTECT_MAGIC (always valid)
+ *   - +3: TOGGLE_RIGOUR (always valid)
+ *   - +4: DRINK_BASTION (valid if doses > 0)
+ *   - +5: DRINK_SUPER_RESTORE (valid if doses > 0)
+ *   - +6: DRINK_SARA_BREW (valid if doses > 0)
+ */
+export function buildValidActionMask(
+    jadRegion: JadRegion,
+    config: JadConfig,
+    observation: Observation
+): boolean[] {
+    const numJads = config.jadCount;
+    const healersPerJad = config.healersPerJad;
+    const numHealers = numJads * healersPerJad;
+    const actionSpaceSize = getActionSpaceSize(config);
+
+    const mask: boolean[] = new Array(actionSpaceSize).fill(false);
+
+    // Action 0: DO_NOTHING - always valid
+    mask[0] = true;
+
+    // Actions 1..numJads: AGGRO_JAD - valid if Jad is alive
+    for (let i = 0; i < numJads; i++) {
+        const jad = jadRegion.getJad(i);
+        mask[1 + i] = jad !== null;
+    }
+
+    // Actions numJads+1..numJads+numHealers: AGGRO_HEALER - valid if healer exists
+    for (let jadIdx = 0; jadIdx < numJads; jadIdx++) {
+        for (let healerIdx = 0; healerIdx < healersPerJad; healerIdx++) {
+            const healer = jadRegion.getHealer(jadIdx, healerIdx);
+            const actionIdx = 1 + numJads + jadIdx * healersPerJad + healerIdx;
+            mask[actionIdx] = healer !== null;
+        }
+    }
+
+    const prayerPotionBase = 1 + numJads + numHealers;
+
+    // Prayer toggles - always valid (can toggle on/off regardless of prayer points)
+    mask[prayerPotionBase + 0] = true; // TOGGLE_PROTECT_MELEE
+    mask[prayerPotionBase + 1] = true; // TOGGLE_PROTECT_MISSILES
+    mask[prayerPotionBase + 2] = true; // TOGGLE_PROTECT_MAGIC
+    mask[prayerPotionBase + 3] = true; // TOGGLE_RIGOUR
+
+    // Potions - valid if doses > 0
+    mask[prayerPotionBase + 4] = observation.bastion_doses > 0;
+    mask[prayerPotionBase + 5] = observation.super_restore_doses > 0;
+    mask[prayerPotionBase + 6] = observation.sara_brew_doses > 0;
+
+    return mask;
 }

@@ -8,6 +8,7 @@ import {
     countPotionDoses,
     buildObservation,
     executeAction,
+    buildValidActionMask,
     computeReward,
     checkTermination,
     TerminationState,
@@ -78,34 +79,38 @@ export class HeadlessEnv {
         this.region = this.createRegionFunc(this.jadConfig);
         this.initialize();
 
+        const jadRegion = this.region as JadRegion;
         const observation = buildObservation(
             this.player,
-            this.region as JadRegion,
+            jadRegion,
             this.jadConfig,
             this.startingDoses
         );
+        const validActionMask = buildValidActionMask(jadRegion, this.jadConfig, observation);
 
         return {
             observation,
             reward: 0,
             terminated: false,
+            valid_action_mask: validActionMask,
         };
     }
 
     step(action: number): StepResult {
+        const jadRegion = this.region as JadRegion;
+
         this.prevObservation = buildObservation(
             this.player,
-            this.region as JadRegion,
+            jadRegion,
             this.jadConfig,
             this.startingDoses
         );
 
-        executeAction(action, this.player, this.region as JadRegion, this.jadConfig);
+        executeAction(action, this.player, jadRegion, this.jadConfig);
 
         this.world.tickWorld(1);
         this.episodeLength++;
 
-        const jadRegion = this.region as JadRegion;
         const observation = buildObservation(
             this.player,
             jadRegion,
@@ -120,11 +125,13 @@ export class HeadlessEnv {
             this.episodeLength,
             this.envConfig.rewardFunc
         );
+        const validActionMask = buildValidActionMask(jadRegion, this.jadConfig, observation);
 
         return {
             observation,
             reward,
             terminated: termination !== TerminationState.ONGOING,
+            valid_action_mask: validActionMask,
         };
     }
 }

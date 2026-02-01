@@ -17,10 +17,15 @@ class EnvProcessWrapper:
     def config(self) -> JadConfig:
         return self._config
 
-    def reset(self) -> Observation:
+    def reset(self) -> StepResult:
         self._start_process()
         result = self._send({"command": "reset"})
-        return self._parse_observation(result["observation"])
+        return StepResult(
+            observation=self._parse_observation(result["observation"]),
+            reward=0.0,
+            terminated=False,
+            valid_action_mask=result.get("valid_action_mask", []),
+        )
 
     def step(self, action: int) -> StepResult:
         if self._proc is None:
@@ -31,6 +36,7 @@ class EnvProcessWrapper:
             observation=self._parse_observation(result["observation"]),
             reward=result["reward"],
             terminated=result["terminated"],
+            valid_action_mask=result.get("valid_action_mask", []),
         )
 
     def close(self) -> None:

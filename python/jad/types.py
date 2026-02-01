@@ -83,3 +83,4 @@ class StepResult:
     observation: Observation
     reward: float
     terminated: bool
+    valid_action_mask: list[bool] = field(default_factory=list)
