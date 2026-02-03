@@ -4,7 +4,7 @@ from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
 
 from jad.types import JadConfig
-from jad.actions import get_action_count
+from jad.actions import get_action_dims
 from jad.env.process_wrapper import EnvProcessWrapper
 from jad.env.observations import obs_to_array, get_observation_dim
 
@@ -35,7 +35,7 @@ class JadGymEnv(gym.Env):
         self.env = EnvProcessWrapper(config=self._config, reward_func=reward_func)
 
         obs_dim = get_observation_dim(self._config)
-        action_count = get_action_count(self._config)
+        self._action_dims = get_action_dims(self._config)
 
         # Define spaces
         self.observation_space = spaces.Box(
@@ -44,9 +44,13 @@ class JadGymEnv(gym.Env):
             shape=(obs_dim,),
             dtype=np.float32,
         )
-        self.action_space = spaces.Discrete(action_count)
+        self.action_space = spaces.MultiDiscrete(self._action_dims)
 
         self.episode_length = 0
+        # Per-head action masks
+        self._current_action_masks: tuple[np.ndarray, ...] = tuple(
+            np.ones(dim, dtype=np.bool_) for dim in self._action_dims
+        )
 
     @property
     def config(self) -> JadConfig:
@@ -55,19 +59,30 @@ class JadGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        obs = self.env.reset()
+        result = self.env.reset()
         self.episode_length = 0
 
-        obs_array = obs_to_array(obs, self._config)
+        if result.valid_action_mask:
+            self._current_action_masks = tuple(
+                np.array(mask, dtype=np.bool_) for mask in result.valid_action_mask
+            )
+
+        obs_array = obs_to_array(result.observation, self._config)
         return obs_array, {}
 
     def step(self, action):
-        action = int(action)
-        result = self.env.step(action)
+        # Convert numpy array to list for JSON serialization
+        action_list = [int(a) for a in action]
+        result = self.env.step(action_list)
         self.episode_length += 1
 
         reward = result.reward
         obs = result.observation
+
+        if result.valid_action_mask:
+            self._current_action_masks = tuple(
+                np.array(mask, dtype=np.bool_) for mask in result.valid_action_mask
+            )
 
         # Check for truncation (training-only concept)
         truncated = False
@@ -86,6 +101,10 @@ class JadGymEnv(gym.Env):
             info["jad_count"] = len(obs.jads)
 
         return obs_array, reward, result.terminated, truncated, info
+
+    def action_masks(self) -> tuple[np.ndarray, ...]:
+        """Return per-head action masks for MultiDiscrete masking."""
+        return self._current_action_masks
 
     def close(self):
         self.env.close()

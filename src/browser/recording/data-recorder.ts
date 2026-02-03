@@ -8,8 +8,7 @@ import { ActionRecorder } from './action-recorder';
 export interface RecordedStep {
     tick: number;
     observation: Observation;
-    action: number;
-    allActions: number[];
+    action: number[];  // MultiDiscrete: [protection, offensive, potion, target]
 }
 
 export interface RecordedEpisode {
@@ -80,18 +79,14 @@ export class DataRecorder {
             this.startingDoses
         );
 
-        // Get actions taken since last tick
-        const allActions = this.actionRecorder.consumePendingActions();
-
-        // Primary action: last action taken, or 0 (DO_NOTHING) if none
-        const action = allActions.length > 0 ? allActions[allActions.length - 1] : 0;
+        // Get action for this tick as MultiDiscrete array
+        const action = this.actionRecorder.consumePendingAction();
 
         // Record step
         this.steps.push({
             tick: this.tickCount,
             observation,
             action,
-            allActions,
         });
 
         this.tickCount++;

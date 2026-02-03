@@ -83,3 +83,4 @@ class StepResult:
     observation: Observation
     reward: float
     terminated: bool
+    valid_action_mask: list[list[bool]] = field(default_factory=list)  # Per-head masks

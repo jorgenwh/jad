@@ -8,6 +8,7 @@ import {
     executeAction,
     countPotionDoses,
     buildObservation,
+    buildValidActionMask,
     computeReward,
     TerminationState,
     getActionName,
@@ -96,10 +97,12 @@ export class AgentController {
 
         // Handle ongoing episode
         if (state === TerminationState.ONGOING) {
+            const mask = buildValidActionMask(this.jadRegion, this.config, obs);
             this.ws.sendStep({
                 observation: obs,
                 reward: 0,
                 terminated: false,
+                valid_action_mask: mask,
             });
         } else { // Handle episode termination
             this.terminationState = state;
@@ -117,10 +120,12 @@ export class AgentController {
 
             console.log(`Episode ${state}: terminal_reward=${reward.toFixed(1)}, total=${this.cumulativeReward.toFixed(1)}`);
 
+            const mask = buildValidActionMask(this.jadRegion, this.config, obs);
             this.ws.sendStep({
                 observation: obs,
                 reward: reward,
                 terminated: true,
+                valid_action_mask: mask,
             });
         }
     }

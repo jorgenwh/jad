@@ -75,7 +75,7 @@ class AgentServer:
 
         self.model = LSTMPolicy(
             obs_dim=config["obs_dim"],
-            action_dim=config["action_dim"],
+            action_dims=config["action_dims"],
             lstm_hidden_size=config["lstm_hidden_size"],
             n_lstm_layers=config["n_lstm_layers"],
         ).to(self.device)
@@ -84,6 +84,7 @@ class AgentServer:
 
         self.lstm_state = None
         print(f"Loaded BC checkpoint: {checkpoint_path}")
+        print(f"  Action dims: {config['action_dims']}")
         print(f"  Loss: {checkpoint.get('loss', 'N/A'):.4f}, Accuracy: {checkpoint.get('accuracy', 'N/A'):.2%}")
 
         # BC models don't use observation normalization (data is already normalized in obs_to_array)
@@ -146,7 +147,7 @@ class AgentServer:
             starting_super_restore_doses=obs_dict.get("starting_super_restore_doses", 4),
         )
 
-    def get_action(self, obs_dict: dict) -> tuple[int, float]:
+    def get_action(self, obs_dict: dict) -> tuple[list[int], float]:
         obs = self._parse_observation(obs_dict)
 
         # Convert to array
@@ -157,7 +158,7 @@ class AgentServer:
         else:
             return self._get_action_bc(obs_array)
 
-    def _get_action_sb3(self, obs_array: np.ndarray) -> tuple[int, float]:
+    def _get_action_sb3(self, obs_array: np.ndarray) -> tuple[list[int], float]:
         # Normalize only continuous features (matching training)
         result = obs_array.copy()
         continuous = obs_array[self.normalize_mask]
@@ -165,7 +166,7 @@ class AgentServer:
         result[self.normalize_mask] = normalized_continuous
         obs_array = result
 
-        # Get action from model
+        # Get action from model - returns np.ndarray for MultiDiscrete
         action, self.lstm_state = self.model.predict(
             obs_array,
             state=self.lstm_state,
@@ -188,12 +189,14 @@ class AgentServer:
         except Exception:
             pass
 
-        return int(action), value
+        # Convert numpy array to list for JSON serialization
+        return [int(a) for a in action], value
 
-    def _get_action_bc(self, obs_array: np.ndarray) -> tuple[int, float]:
+    def _get_action_bc(self, obs_array: np.ndarray) -> tuple[list[int], float]:
         # BC models use obs_to_array which already normalizes
         obs_tensor = torch.from_numpy(obs_array).float().to(self.device)
 
+        # get_action returns list of ints (one per head)
         action, self.lstm_state = self.model.get_action(
             obs_tensor,
             lstm_states=self.lstm_state,
