@@ -6,7 +6,7 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
-from jad import JadConfig, get_action_count
+from jad import JadConfig, get_action_dims
 from jad.env import make_jad_env, get_observation_dim, SelectiveVecNormalize
 
 
@@ -181,12 +181,12 @@ def train(
     # Create config
     config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
     obs_dim = get_observation_dim(config)
-    action_count = get_action_count(config)
+    action_dims = get_action_dims(config)
 
     print(f"Configuration: {jad_count} Jad(s), {healers_per_jad} healers per Jad")
     print(f"Reward function: {reward_func}")
     print(f"Observation dimension: {obs_dim}")
-    print(f"Action count: {action_count}")
+    print(f"Action space: MultiDiscrete{action_dims}")
 
     # Create checkpoint directory
     checkpoint_path = Path(checkpoint_dir)

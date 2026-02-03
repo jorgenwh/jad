@@ -3,48 +3,47 @@ import { JadConfig, TerminationState } from './types';
 import { JadRegion } from './jad-region';
 
 /**
- * Get action count for given Jad configuration
- * Actions: DO_NOTHING + N*AGGRO_JAD + N*H*AGGRO_HEALER + 7 prayers/potions
+ * Get human-readable name for a multi-head action.
  */
-export function getActionCount(config: JadConfig): number {
-    return 1 + config.jadCount + config.jadCount * config.healersPerJad + 7;
-}
+export function getActionName(action: number[], config: JadConfig): string {
+    const parts: string[] = [];
 
-export function getActionName(action: number, config: JadConfig): string {
-    if (action === 0) return 'DO_NOTHING';
-
-    let idx = 1;
-
-    // Aggro Jad actions
-    for (let i = 0; i < config.jadCount; i++) {
-        if (action === idx) return `AGGRO_JAD_${i + 1}`;
-        idx++;
+    // Protection prayer (head 0)
+    const protectionNames = ['', 'MAGE', 'RANGE', 'MELEE'];
+    if (action[0] > 0) {
+        parts.push(`PROTECT_${protectionNames[action[0]]}`);
     }
 
-    // Aggro healer actions
-    for (let jadIdx = 0; jadIdx < config.jadCount; jadIdx++) {
-        for (let healerIdx = 0; healerIdx < config.healersPerJad; healerIdx++) {
-            if (action === idx) return `AGGRO_H${jadIdx + 1}.${healerIdx + 1}`;
-            idx++;
+    // Offensive prayer (head 1)
+    if (action[1] === 1) {
+        parts.push('TOGGLE_RIGOUR');
+    }
+
+    // Potion (head 2)
+    const potionNames = ['', 'BASTION', 'SUPER_RESTORE', 'SARA_BREW'];
+    if (action[2] > 0) {
+        parts.push(`DRINK_${potionNames[action[2]]}`);
+    }
+
+    // Target (head 3)
+    const target = action[3];
+    if (target > 0) {
+        const numJads = config.jadCount;
+        if (target <= numJads) {
+            parts.push(`AGGRO_JAD_${target}`);
+        } else {
+            const healerIdx = target - numJads - 1;
+            const jadIdx = Math.floor(healerIdx / config.healersPerJad);
+            const hIdx = healerIdx % config.healersPerJad;
+            parts.push(`AGGRO_H${jadIdx + 1}.${hIdx + 1}`);
         }
     }
 
-    // Prayer/potion actions
-    const fixedActions = [
-        'TOGGLE_PROTECT_MELEE',
-        'TOGGLE_PROTECT_MISSILES',
-        'TOGGLE_PROTECT_MAGIC',
-        'TOGGLE_RIGOUR',
-        'DRINK_BASTION',
-        'DRINK_SUPER_RESTORE',
-        'DRINK_SARA_BREW',
-    ];
-    const fixedIdx = action - idx;
-    if (fixedIdx >= 0 && fixedIdx < fixedActions.length) {
-        return fixedActions[fixedIdx];
+    if (parts.length === 0) {
+        return 'NO_OP';
     }
 
-    return 'UNKNOWN';
+    return parts.join(' + ');
 }
 
 export function checkTermination(

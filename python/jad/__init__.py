@@ -10,7 +10,7 @@ from jad.types import (
     StepResult,
 )
 from jad.config import parse_config_from_env
-from jad.actions import get_action_count, get_action_name
+from jad.actions import get_action_dims
 
 __all__ = [
     "JadConfig",
@@ -21,6 +21,5 @@ __all__ = [
     "Observation",
     "StepResult",
     "parse_config_from_env",
-    "get_action_count",
-    "get_action_name",
+    "get_action_dims",
 ]

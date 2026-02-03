@@ -96,7 +96,7 @@ export class HeadlessEnv {
         };
     }
 
-    step(action: number): StepResult {
+    step(action: number[]): StepResult {
         const jadRegion = this.region as JadRegion;
 
         this.prevObservation = buildObservation(

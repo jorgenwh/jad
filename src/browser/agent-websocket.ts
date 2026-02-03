@@ -1,6 +1,6 @@
 import { StepResult } from '../core';
 
-export type ActionHandler = (action: number, value: number) => void;
+export type ActionHandler = (action: number[], value: number) => void;
 export type ConnectionHandler = (connected: boolean) => void;
 
 export class AgentWebSocket {

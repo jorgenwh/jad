@@ -1,21 +1,21 @@
 import torch
 import torch.nn as nn
-from typing import Tuple
 
 
 class LSTMPolicy(nn.Module):
-    """LSTM policy matching SB3's MlpLstmPolicy architecture"""
+    """LSTM policy with MultiDiscrete action heads."""
     def __init__(
         self,
         obs_dim: int,
-        action_dim: int,
+        action_dims: list[int],
         lstm_hidden_size: int = 256,
         n_lstm_layers: int = 1,
     ):
         super().__init__()
 
         self.obs_dim = obs_dim
-        self.action_dim = action_dim
+        self.action_dims = action_dims
+        self.num_heads = len(action_dims)
         self.lstm_hidden_size = lstm_hidden_size
         self.n_lstm_layers = n_lstm_layers
 
@@ -37,18 +37,29 @@ class LSTMPolicy(nn.Module):
             batch_first=True,
         )
 
-        # Policy head (actor)
-        self.policy_head = nn.Linear(lstm_hidden_size, action_dim)
+        # Policy heads (one per action head)
+        self.policy_heads = nn.ModuleList([
+            nn.Linear(lstm_hidden_size, dim) for dim in action_dims
+        ])
 
-        # Value head (critic) - separate from actor in SB3 by default
+        # Value head (critic)
         self.value_head = nn.Linear(lstm_hidden_size, 1)
 
     def forward(
         self,
         obs: torch.Tensor,
-        lstm_states: Tuple[torch.Tensor, torch.Tensor] | None = None,
+        lstm_states: tuple[torch.Tensor, torch.Tensor] | None = None,
         mask: torch.Tensor | None = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> tuple[list[torch.Tensor], torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Forward pass.
+
+        Returns:
+            logits: list of tensors, one per action head
+                    each tensor is (batch, seq_len, head_dim) or (batch, head_dim)
+            values: (batch, seq_len, 1) or (batch, 1)
+            lstm_states: tuple of (h, c)
+        """
         # Handle single timestep input
         single_step = obs.dim() == 2
         if single_step:
@@ -68,12 +79,12 @@ class LSTMPolicy(nn.Module):
         # LSTM forward
         lstm_out, lstm_states = self.lstm(features, lstm_states)  # (batch, seq_len, hidden)
 
-        # Policy and value heads
-        logits = self.policy_head(lstm_out)  # (batch, seq_len, action_dim)
+        # Policy heads (one per action head)
+        logits = [head(lstm_out) for head in self.policy_heads]
         values = self.value_head(lstm_out)  # (batch, seq_len, 1)
 
         if single_step:
-            logits = logits.squeeze(1)  # (batch, action_dim)
+            logits = [l.squeeze(1) for l in logits]  # each: (batch, head_dim)
             values = values.squeeze(1)  # (batch, 1)
 
         return logits, values, lstm_states
@@ -81,23 +92,27 @@ class LSTMPolicy(nn.Module):
     def get_action(
         self,
         obs: torch.Tensor,
-        lstm_states: Tuple[torch.Tensor, torch.Tensor] | None = None,
+        lstm_states: tuple[torch.Tensor, torch.Tensor] | None = None,
         deterministic: bool = True,
-    ) -> Tuple[int, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> tuple[list[int], tuple[torch.Tensor, torch.Tensor]]:
+        """Get action as list of integers (one per head)."""
         with torch.no_grad():
             obs = obs.unsqueeze(0)  # (1, obs_dim)
-            logits, _, lstm_states = self.forward(obs, lstm_states)
-            logits = logits.squeeze(0)  # (action_dim,)
+            logits_list, _, lstm_states = self.forward(obs, lstm_states)
 
-            if deterministic:
-                action = logits.argmax().item()
-            else:
-                probs = torch.softmax(logits, dim=-1)
-                action = torch.multinomial(probs, 1).item()
+            actions = []
+            for logits in logits_list:
+                logits = logits.squeeze(0)  # (head_dim,)
+                if deterministic:
+                    action = logits.argmax().item()
+                else:
+                    probs = torch.softmax(logits, dim=-1)
+                    action = torch.multinomial(probs, 1).item()
+                actions.append(action)
 
-        return action, lstm_states
+        return actions, lstm_states
 
-    def init_hidden(self, batch_size: int = 1, device: torch.device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def init_hidden(self, batch_size: int = 1, device: torch.device = None) -> tuple[torch.Tensor, torch.Tensor]:
         if device is None:
             device = next(self.parameters()).device
 

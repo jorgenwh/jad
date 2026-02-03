@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from jad import JadConfig, get_action_count
+from jad import JadConfig, get_action_dims
 from jad.env import get_observation_dim
 from data import BCSequenceDataset, load_episodes
 from models import LSTMPolicy
@@ -34,11 +34,11 @@ def train(
     # Config
     config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
     obs_dim = get_observation_dim(config)
-    action_dim = get_action_count(config)
+    action_dims = get_action_dims(config)
 
     print(f"Config: {jad_count} Jad(s), {healers_per_jad} healers per Jad")
     print(f"Observation dim: {obs_dim}")
-    print(f"Action dim: {action_dim}")
+    print(f"Action dims: {action_dims} (MultiDiscrete)")
 
     # Load data
     data_path = Path(data_dir)
@@ -61,15 +61,16 @@ def train(
     # Create model
     model = LSTMPolicy(
         obs_dim=obs_dim,
-        action_dim=action_dim,
+        action_dims=action_dims,
         lstm_hidden_size=lstm_hidden_size,
         n_lstm_layers=n_lstm_layers,
     ).to(device)
 
+    num_heads = len(action_dims)
     print(f"\nModel architecture:")
     print(f"  Features: {obs_dim} -> 64 -> 64")
     print(f"  LSTM: 64 -> {lstm_hidden_size} (layers={n_lstm_layers})")
-    print(f"  Policy head: {lstm_hidden_size} -> {action_dim}")
+    print(f"  Policy heads: {num_heads} heads with dims {action_dims}")
     print(f"  Value head: {lstm_hidden_size} -> 1")
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -97,32 +98,43 @@ def train(
 
         for batch_obs, batch_actions, batch_mask in dataloader:
             batch_obs = batch_obs.to(device)
-            batch_actions = batch_actions.to(device)
+            batch_actions = batch_actions.to(device)  # (batch, seq_len, num_heads)
             batch_mask = batch_mask.to(device)
 
-            # Forward pass
-            logits, _, _ = model(batch_obs)  # (batch, seq_len, action_dim)
+            # Forward pass - logits_list is list of (batch, seq_len, head_dim)
+            logits_list, _, _ = model(batch_obs)
 
-            # Compute loss with masking
-            logits_flat = logits.view(-1, action_dim)  # (batch * seq_len, action_dim)
-            actions_flat = batch_actions.view(-1)  # (batch * seq_len,)
+            # Compute loss for each head and sum
+            total_loss = 0.0
+            total_correct = 0
             mask_flat = batch_mask.view(-1)  # (batch * seq_len,)
 
-            loss_per_step = criterion(logits_flat, actions_flat)  # (batch * seq_len,)
-            loss = (loss_per_step * mask_flat).sum() / mask_flat.sum()
+            for head_idx, logits in enumerate(logits_list):
+                head_dim = action_dims[head_idx]
+                logits_flat = logits.view(-1, head_dim)  # (batch * seq_len, head_dim)
+                actions_flat = batch_actions[:, :, head_idx].reshape(-1)  # (batch * seq_len,)
+
+                loss_per_step = criterion(logits_flat, actions_flat)
+                head_loss = (loss_per_step * mask_flat).sum() / mask_flat.sum()
+                total_loss = total_loss + head_loss
+
+                # Track accuracy per head
+                preds = logits_flat.argmax(dim=-1)
+                correct = ((preds == actions_flat) * mask_flat).sum().item()
+                total_correct += correct
+
+            # Average loss across heads
+            loss = total_loss / num_heads
 
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            # Track metrics
+            # Track metrics (accuracy is average across all heads)
             epoch_loss += loss.item() * mask_flat.sum().item()
-
-            preds = logits_flat.argmax(dim=-1)
-            correct = ((preds == actions_flat) * mask_flat).sum().item()
-            epoch_correct += correct
-            epoch_total += mask_flat.sum().item()
+            epoch_correct += total_correct
+            epoch_total += mask_flat.sum().item() * num_heads
 
         # Epoch stats
         avg_loss = epoch_loss / epoch_total
@@ -140,7 +152,7 @@ def train(
                 'model_state_dict': model.state_dict(),
                 'config': {
                     'obs_dim': obs_dim,
-                    'action_dim': action_dim,
+                    'action_dims': action_dims,
                     'lstm_hidden_size': lstm_hidden_size,
                     'n_lstm_layers': n_lstm_layers,
                 },

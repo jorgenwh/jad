@@ -26,7 +26,6 @@ dev = [
 jad-train = "scripts.train_ppo:main"
 jad-train-bc = "scripts.train_bc:main"
 jad-serve = "scripts.serve_agent:main"
-jad-test-env = "scripts.test_env:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["python/jad", "python/scripts", "python/data", "python/models", "python/training"]

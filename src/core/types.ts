@@ -67,5 +67,50 @@ export interface StepResult {
     observation: Observation;
     reward: number;
     terminated: boolean;
-    valid_action_mask: boolean[];
+    valid_action_mask: boolean[][];
+}
+
+// MultiDiscrete action head indices
+export const enum ActionHead {
+    PROTECTION_PRAYER = 0,
+    OFFENSIVE_PRAYER = 1,
+    POTION = 2,
+    TARGET = 3,
+}
+
+// Protection prayer head values (head 0)
+export const enum ProtectionPrayerAction {
+    NO_OP = 0,
+    PROTECT_MAGIC = 1,
+    PROTECT_RANGE = 2,
+    PROTECT_MELEE = 3,
+}
+
+// Offensive prayer head values (head 1)
+export const enum OffensivePrayerAction {
+    NO_OP = 0,
+    TOGGLE_RIGOUR = 1,
+}
+
+// Potion head values (head 2)
+export const enum PotionAction {
+    NONE = 0,
+    BASTION = 1,
+    SUPER_RESTORE = 2,
+    SARA_BREW = 3,
+}
+
+// Target head values (head 3)
+// 0 = no-op, 1..N = jad, N+1.. = healer (dynamic based on config)
+export const TARGET_NO_OP = 0;
+
+// Action space dimensions for each head
+export const ACTION_HEAD_COUNT = 4;
+export const PROTECTION_PRAYER_SIZE = 4;  // no-op + 3 prayers
+export const OFFENSIVE_PRAYER_SIZE = 2;   // no-op + rigour
+export const POTION_SIZE = 4;             // none + 3 potions
+
+// Helper to get target head size: 1 (no-op) + N (jads) + N*H (healers)
+export function getTargetHeadSize(config: JadConfig): number {
+    return 1 + config.jadCount + config.jadCount * config.healersPerJad;
 }

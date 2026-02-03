@@ -27,7 +27,7 @@ class EnvProcessWrapper:
             valid_action_mask=result.get("valid_action_mask", []),
         )
 
-    def step(self, action: int) -> StepResult:
+    def step(self, action: list[int]) -> StepResult:
         if self._proc is None:
             raise RuntimeError("Must call reset() before step()")
 
