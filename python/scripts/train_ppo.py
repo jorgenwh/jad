@@ -5,6 +5,7 @@ from pathlib import Path
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
+from torch.utils.tensorboard import SummaryWriter
 
 from jad import JadConfig, get_action_dims
 from jad.env import make_jad_env, get_observation_dim, SelectiveVecNormalize
@@ -17,7 +18,7 @@ REWARD_FUNCTIONS = ['default', 'sparse', 'multijad']
 class EpisodeStatsCallback(BaseCallback):
     """
     Callback that tracks episode stats and saves the model when average reward improves.
-    Prints stats every 100 episodes similar to the original train.py.
+    Prints stats every 100 episodes and logs to TensorBoard.
     """
 
     def __init__(
@@ -28,6 +29,7 @@ class EpisodeStatsCallback(BaseCallback):
         log_interval: int = 100,
         save_path: str = "checkpoints/best_sb3.pt",
         normalizer_path: str = "checkpoints/normalizer_sb3.npz",
+        tensorboard_log: str | None = None,
         verbose: int = 1,
     ):
         super().__init__(verbose)
@@ -39,10 +41,15 @@ class EpisodeStatsCallback(BaseCallback):
         self.normalizer_path = normalizer_path
         self.best_mean_reward = float("-inf")
 
+        # TensorBoard writer
+        self.tb_writer = SummaryWriter(tensorboard_log) if tensorboard_log else None
+
         # Track stats for current block of episodes
         self.episode_raw_rewards = []
         self.episode_norm_rewards = []
         self.episode_lengths = []
+        self.episode_wins = []
+        self.episode_jad_kills = []
         self.total_episodes = 0
 
         # Track jads killed per episode in current block
@@ -78,6 +85,11 @@ class EpisodeStatsCallback(BaseCallback):
                 if jads_killed <= self.jad_count:
                     self.jads_killed_counts[jads_killed] += 1
 
+                # Track wins and jad kills
+                is_win = 1 if jads_killed == self.jad_count else 0
+                self.episode_wins.append(is_win)
+                self.episode_jad_kills.append(jads_killed)
+
                 # Check if we should log (every log_interval episodes)
                 if self.total_episodes % self.log_interval == 0:
                     self._log_stats()
@@ -95,14 +107,17 @@ class EpisodeStatsCallback(BaseCallback):
 
         # Calculate stats for the last log_interval episodes
         recent_raw = self.episode_raw_rewards[-self.log_interval :]
-        recent_norm = self.episode_norm_rewards[-self.log_interval :]
         recent_len = self.episode_lengths[-self.log_interval :]
+        recent_jad_kills = self.episode_jad_kills[-self.log_interval :]
 
         mean_raw_reward = sum(recent_raw) / len(recent_raw)
-        mean_norm_reward = sum(recent_norm) / len(recent_norm)
         mean_length = sum(recent_len) / len(recent_len)
         min_raw, max_raw = min(recent_raw), max(recent_raw)
         min_len, max_len = int(min(recent_len)), int(max(recent_len))
+
+        # Jad kills stats
+        mean_jad_kills = sum(recent_jad_kills) / len(recent_jad_kills)
+        min_jad_kills, max_jad_kills = min(recent_jad_kills), max(recent_jad_kills)
 
         # Calculate time
         elapsed = int(time.time() - self.start_time)
@@ -121,6 +136,35 @@ class EpisodeStatsCallback(BaseCallback):
         print(f"  Wins:    {wins}/{self.log_interval}  |  Jad kills: {total_jads_killed}/{max_possible_kills}")
         print(f"  Steps:   {self.num_timesteps:,}  |  Time: {elapsed_str}")
 
+        # Log to TensorBoard (grouped metrics appear on same plot)
+        if self.tb_writer:
+            self.tb_writer.add_scalars("reward", {
+                "min": min_raw,
+                "avg": mean_raw_reward,
+                "max": max_raw,
+            }, self.total_episodes)
+
+            self.tb_writer.add_scalars("episode_length", {
+                "min": min_len,
+                "avg": mean_length,
+                "max": max_len,
+            }, self.total_episodes)
+
+            self.tb_writer.add_scalars("jad_kills", {
+                "min": min_jad_kills,
+                "avg": mean_jad_kills,
+                "max": max_jad_kills,
+            }, self.total_episodes)
+
+            self.tb_writer.add_scalar("win_rate", wins / self.log_interval, self.total_episodes)
+
+            # Log summary stats as text (viewable in Text tab)
+            self.tb_writer.add_text("progress",
+                f"**Episodes:** {self.total_episodes:,} | **Steps:** {self.num_timesteps:,}",
+                self.total_episodes)
+
+            self.tb_writer.flush()
+
         # Save if this is the best so far (using raw reward for interpretability)
         if mean_raw_reward > self.best_mean_reward:
             self.best_mean_reward = mean_raw_reward
@@ -129,10 +173,15 @@ class EpisodeStatsCallback(BaseCallback):
             self.vec_normalize_env.save_normalizer(self.normalizer_path)
             print(f"  ** NEW BEST - saved to {self.save_path} **")
 
-        print()  # Blank line between updates
+        print()
 
         # Reset jads killed counts for next block
         self.jads_killed_counts = [0] * (self.jad_count + 1)
+
+    def _on_training_end(self) -> None:
+        """Close TensorBoard writer when training ends."""
+        if self.tb_writer:
+            self.tb_writer.close()
 
 
 def train(
@@ -154,6 +203,7 @@ def train(
     checkpoint_dir: str = "checkpoints",
     resume_path: str | None = None,
     reward_func: str = "default",
+    tensorboard_log: str | None = "runs",
 ):
     """
     Train using Stable-Baselines3 PPO with LSTM policy and parallelized environments.
@@ -177,6 +227,7 @@ def train(
         checkpoint_dir: Directory for saving checkpoints
         resume_path: Path to .zip checkpoint to resume training from
         reward_func: Reward function to use (default, sparse, prayer_only, aggressive)
+        tensorboard_log: Directory for TensorBoard logs (None to disable)
     """
     # Create config
     config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
@@ -251,6 +302,14 @@ def train(
     print(f"  Epochs per update: {n_epochs}")
     print(f"  Device: {model.device}")
 
+    # Create TensorBoard log directory with unique run name
+    tb_log_path = None
+    if tensorboard_log:
+        run_name = f"{jad_count}jad_{healers_per_jad}heal_{reward_func}_{int(time.time())}"
+        tb_log_path = str(Path(tensorboard_log) / run_name)
+        print(f"TensorBoard logs: {tb_log_path}")
+        print(f"  View dashboard: tensorboard --logdir {tensorboard_log}")
+
     # Create callback for tracking stats and saving best model
     callback = EpisodeStatsCallback(
         vec_normalize_env=env,
@@ -259,6 +318,7 @@ def train(
         log_interval=100,  # Print stats every 100 episodes
         save_path=str(model_save_path),
         normalizer_path=str(normalizer_path),
+        tensorboard_log=tb_log_path,
         verbose=1,
     )
 
@@ -345,8 +405,15 @@ def main():
         choices=REWARD_FUNCTIONS,
         help=f"Reward function to use (default: default). Available: {REWARD_FUNCTIONS}",
     )
+    parser.add_argument(
+        "--tensorboard-log",
+        type=str,
+        default="runs",
+        help="Directory for TensorBoard logs (default: runs, use 'none' to disable)",
+    )
     args = parser.parse_args()
 
+    tb_log = args.tensorboard_log if args.tensorboard_log.lower() != "none" else None
     train(
         jad_count=args.jad_count,
         healers_per_jad=args.healers_per_jad,
@@ -358,6 +425,7 @@ def main():
         checkpoint_dir=args.checkpoint_dir,
         resume_path=args.resume,
         reward_func=args.reward_func,
+        tensorboard_log=tb_log,
     )
 
 

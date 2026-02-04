@@ -14,6 +14,7 @@ dependencies = [
     "stable-baselines3>=2.0.0",
     "sb3-contrib>=2.0.0",
     "websockets>=12.0",
+    "tensorboard>=2.14.0",
 ]
 
 [project.optional-dependencies]
@@ -21,11 +22,6 @@ dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
 ]
-
-[project.scripts]
-jad-train = "scripts.train_ppo:main"
-jad-train-bc = "scripts.train_bc:main"
-jad-serve = "scripts.serve_agent:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["python/jad", "python/scripts", "python/data", "python/models", "python/training"]
