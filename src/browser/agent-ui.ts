@@ -1,8 +1,12 @@
-import { Observation } from '../core';
+import { Observation, JadConfig } from '../core';
 
 const PRAYER_NAMES = ['None', 'Mage', 'Range', 'Melee'];
 const ATTACK_NAMES = ['None', 'Mage', 'Range', 'Melee'];
 const HEALER_TARGET_NAMES = ['Not Present', 'Jad', 'Player'];
+
+const PROTECTION_NAMES = ['None', 'Mage', 'Range', 'Melee'];
+const OFFENSIVE_NAMES = ['None', 'Rigour'];
+const POTION_NAMES = ['None', 'Bastion', 'Restore', 'Brew'];
 
 export class AgentUI {
     showAgentInfo(show: boolean): void {
@@ -12,13 +16,37 @@ export class AgentUI {
         }
     }
 
-    updateAction(actionName: string, value: number): void {
-        this.setElement('agent_action', actionName);
+    updateAction(action: number[], value: number, config: JadConfig): void {
+        // Protection prayer (head 0)
+        this.setElement('agent_protection', PROTECTION_NAMES[action[0]]);
+
+        // Offensive prayer (head 1)
+        this.setElement('agent_offensive', OFFENSIVE_NAMES[action[1]]);
+
+        // Potion (head 2)
+        this.setElement('agent_potion', POTION_NAMES[action[2]]);
+
+        // Target (head 3)
+        const target = action[3];
+        let targetName = 'None';
+        if (target > 0) {
+            const numJads = config.jadCount;
+            if (target <= numJads) {
+                targetName = `Jad ${target}`;
+            } else {
+                const healerIdx = target - numJads - 1;
+                const jadIdx = Math.floor(healerIdx / config.healersPerJad);
+                const hIdx = healerIdx % config.healersPerJad;
+                targetName = `H${jadIdx + 1}.${hIdx + 1}`;
+            }
+        }
+        this.setElement('agent_target', targetName);
+
         this.setElement('agent_value', value.toFixed(2));
     }
 
     updateActionStatus(status: string): void {
-        this.setElement('agent_action', status);
+        this.setElement('agent_status', `[${status}]`);
     }
 
     updateReward(cumulativeReward: number, episodeLength: number): void {

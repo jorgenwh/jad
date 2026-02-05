@@ -67,8 +67,7 @@ export class AgentController {
             this.episodeLength++;
             this.prevObservation = obs;
 
-            const actionName = getActionName(action, this.config);
-            this.ui.updateAction(actionName, value);
+            this.ui.updateAction(action, value, this.config);
             this.ui.updateObservation(obs);
             this.ui.updateReward(this.cumulativeReward, this.episodeLength);
         };
