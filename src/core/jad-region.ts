@@ -5,6 +5,7 @@ import { getRangedLoadout } from './loadout';
 import { Jad } from './jad';
 import { YtHurKot } from './healer';
 import { JadConfig, DEFAULT_CONFIG, HealerTarget } from './types';
+import { JAD_PROJECTILE_DELAY } from './jad';
 
 const REGION_WIDTH = 27;
 const REGION_HEIGHT = 27;
@@ -67,6 +68,7 @@ export class JadRegion extends Region {
     private config: JadConfig;
     private _jads: Jad[] = [];
     private _healers: Map<number, YtHurKot[]> = new Map();
+    private _projectileTracking: { type: number; ticksRemaining: number }[] = [];
 
     constructor(config: JadConfig = DEFAULT_CONFIG) {
         super();
@@ -126,6 +128,10 @@ export class JadRegion extends Region {
         return healer;
     }
 
+    getProjectileState(jadIndex: number): { type: number; ticksRemaining: number } {
+        return this._projectileTracking[jadIndex] || { type: 0, ticksRemaining: 0 };
+    }
+
     getHealerTarget(jadIndex: number, healerIndex: number): HealerTarget {
         const healer = this.getHealer(jadIndex, healerIndex);
         if (!healer) {
@@ -151,6 +157,12 @@ export class JadRegion extends Region {
 
         const attackOrder = shuffleArray(
             Array.from({ length: this.config.jadCount }, (_, i) => i)
+        );
+
+        // Initialize projectile tracking
+        this._projectileTracking = Array.from(
+            { length: this.config.jadCount },
+            () => ({ type: 0, ticksRemaining: 0 })
         );
 
         // Spawn Jads
@@ -185,7 +197,34 @@ export class JadRegion extends Region {
 
     postTick() {
         super.postTick();
+        this.updateProjectileTracking();
         this.updateTickCounter();
+    }
+
+    private updateProjectileTracking(): void {
+        for (let i = 0; i < this._jads.length; i++) {
+            const jad = this._jads[i];
+            if (!jad || jad.isDying() || jad.currentStats.hitpoint <= 0) {
+                this._projectileTracking[i] = { type: 0, ticksRemaining: 0 };
+                continue;
+            }
+
+            // Detect new attack: attackDelay resets to attackSpeed on the tick Jad fires
+            if (jad.attackDelay === jad.attackSpeed) {
+                let type = 0;
+                switch (jad.attackStyle) {
+                    case 'magic': type = 1; break;
+                    case 'range': type = 2; break;
+                    case 'stab': type = 3; break;
+                }
+                this._projectileTracking[i] = { type, ticksRemaining: JAD_PROJECTILE_DELAY };
+            } else if (this._projectileTracking[i].ticksRemaining > 0) {
+                this._projectileTracking[i].ticksRemaining--;
+                if (this._projectileTracking[i].ticksRemaining === 0) {
+                    this._projectileTracking[i].type = 0;
+                }
+            }
+        }
     }
 
     private updateTickCounter() {

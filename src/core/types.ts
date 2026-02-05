@@ -10,7 +10,8 @@ export const DEFAULT_CONFIG: JadConfig = {
 
 export interface JadState {
     hp: number;
-    attack: number;  // 0=none, 1=mage, 2=range, 3=melee
+    attack: number;              // 0=none, 1=mage, 2=range, 3=melee (non-zero while projectile in flight)
+    ticks_until_impact: number;  // 0=none, 1-3=ticks remaining until projectile hits
     x: number;
     y: number;
     alive: boolean;

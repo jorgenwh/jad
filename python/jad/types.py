@@ -29,7 +29,8 @@ class TerminationState(Enum):
 @dataclass
 class JadState:
     hp: int
-    attack: int  # 0=none, 1=mage, 2=range, 3=melee
+    attack: int              # 0=none, 1=mage, 2=range, 3=melee (non-zero while projectile in flight)
+    ticks_until_impact: int  # 0=none, 1-3=ticks remaining until projectile hits
     x: int
     y: int
     alive: bool

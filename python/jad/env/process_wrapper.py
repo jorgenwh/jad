@@ -99,6 +99,7 @@ class EnvProcessWrapper:
             jads.append(JadState(
                 hp=jad_data.get("hp", 0),
                 attack=jad_data.get("attack", 0),
+                ticks_until_impact=jad_data.get("ticks_until_impact", 0),
                 x=jad_data.get("x", 0),
                 y=jad_data.get("y", 0),
                 alive=jad_data.get("alive", False),

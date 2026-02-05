@@ -95,7 +95,14 @@ function jadKillReward(obs: Observation, prevObs: Observation, killReward: numbe
     return reward;
 }
 
-registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => {
+registerRewardFunction(
+    'default',
+    (
+        obs: Observation,
+        prevObs: Observation | null,
+        termination: TerminationState,
+        episodeLength: number
+    ) => {
     if (prevObs === null) {
         return 0;
     }
@@ -152,7 +159,14 @@ registerRewardFunction('default', (obs, prevObs, termination, episodeLength) => 
     return reward;
 });
 
-registerRewardFunction('sparse', (_obs, _prevObs, termination, _episodeLength) => {
+registerRewardFunction(
+    'sparse',
+    (
+        _obs: Observation,
+        _prevObs: Observation | null,
+        termination: TerminationState,
+        _episodeLength: number
+    ) => {
     switch (termination) {
         case TerminationState.JAD_KILLED:
             return 1;
@@ -163,7 +177,14 @@ registerRewardFunction('sparse', (_obs, _prevObs, termination, _episodeLength) =
     }
 });
 
-registerRewardFunction('multijad', (obs, prevObs, termination, episodeLength) => {
+registerRewardFunction(
+    'multijad',
+    (
+        obs: Observation,
+        prevObs: Observation | null,
+        termination: TerminationState,
+        episodeLength: number
+    ) => {
     let reward = 0;
 
     if (prevObs === null) {
