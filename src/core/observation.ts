@@ -91,25 +91,6 @@ export function getPlayerTarget(
     return 0;
 }
 
-/**
- * Attack is only reported on the tick it fires (when attackDelay just reset to attackSpeed)
- */
-function getJadAttack(jad: { attackDelay: number; attackSpeed: number; attackStyle: string }): number {
-    if (jad.attackDelay === jad.attackSpeed) {
-        switch (jad.attackStyle) {
-            case 'magic':
-                return 1;
-            case 'range':
-                return 2;
-            case 'stab':
-                return 3;
-            default:
-                throw new Error(`Unknown Jad attack style: ${jad.attackStyle}`);
-        }
-    }
-    return 0; // no attack this tick
-}
-
 export function getJadStates(
     jadRegion: JadRegion,
     config: JadConfig
@@ -119,15 +100,17 @@ export function getJadStates(
     for (let i = 0; i < config.jadCount; i++) {
         const jad = jadRegion.getJad(i);
         if (jad) {
+            const projectile = jadRegion.getProjectileState(i);
             jads.push({
                 hp: jad.currentStats?.hitpoint ?? 0,
-                attack: getJadAttack(jad),
+                attack: projectile.type,
+                ticks_until_impact: projectile.ticksRemaining,
                 x: jad.location.x,
                 y: jad.location.y,
                 alive: jad.dying === -1 && (jad.currentStats?.hitpoint ?? 0) > 0,
             });
         } else {
-            jads.push({ hp: 0, attack: 0, x: 0, y: 0, alive: false });
+            jads.push({ hp: 0, attack: 0, ticks_until_impact: 0, x: 0, y: 0, alive: false });
         }
     }
 

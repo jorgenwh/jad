@@ -24,7 +24,6 @@ import {
 
 import { YtHurKot } from './healer';
 import type { JadRegion } from './jad-region';
-
 const JadModel = Assets.getAssetUrl("models/7700_33012.glb");
 const JadRangeProjectileModel = Assets.getAssetUrl("models/jad_range.glb");
 const JadMageProjectileModel1 = Assets.getAssetUrl("models/jad_mage_front.glb");
@@ -32,7 +31,7 @@ const JadMageProjectileModel2 = Assets.getAssetUrl("models/jad_mage_middle.glb")
 const JadMageProjectileModel3 = Assets.getAssetUrl("models/jad_mage_rear.glb");
 const HitSound = Assets.getAssetUrl("assets/sounds/dragon_hit_410.ogg");
 
-const JAD_PROJECTILE_DELAY = 3;
+export const JAD_PROJECTILE_DELAY = 3;
 
 
 class JadMagicWeapon extends MagicWeapon {
