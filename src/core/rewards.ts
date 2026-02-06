@@ -183,7 +183,7 @@ registerRewardFunction(
         obs: Observation,
         prevObs: Observation | null,
         termination: TerminationState,
-        episodeLength: number
+        _episodeLength: number
     ) => {
     let reward = 0;
 
@@ -204,18 +204,22 @@ registerRewardFunction(
         reward -= 0.1;
     }
 
-    // Time pressure: small increasing penalty to discourage stalling
-    // At tick 100: -0.3, tick 200: -0.6, tick 300: -0.9, ...
-    reward -= episodeLength * 0.003;
+    // Constant time pressure to discourage stalling
+    reward -= 0.3;
 
-    // Net HP delta per Jad: rewards damage dealt, penalizes healer healing
-    // When damage > healing: positive reward (making progress)
-    // When healing > damage: negative reward (losing ground)
-    // When equal: zero reward (no progress)
-    for (let i = 0; i < obs.jads.length; i++) {
-        const hpDelta = prevObs.jads[i].hp - obs.jads[i].hp;
+    // HP delta only for the Jad the player is currently targeting
+    // Avoids penalizing the agent for healer healing on non-focused Jads
+    if (obs.player_target > 0 && obs.player_target <= obs.jads.length) {
+        const targetIdx = obs.player_target - 1;
+        const hpDelta = prevObs.jads[targetIdx].hp - obs.jads[targetIdx].hp;
         reward += hpDelta * 0.3;
     }
+
+    // Reward for tagging healers off Jad (one-time bonus per healer)
+    reward += healerTagReward(obs, prevObs);
+
+    // Penalty for each healer still targeting Jad (encourages tagging healers)
+    reward -= healerTargetingJadPenalty(obs, 0.5);
 
     // Large reward for each Jad killed
     reward += jadKillReward(obs, prevObs, 200.0);
@@ -223,16 +227,14 @@ registerRewardFunction(
     // Terminal rewards
     switch (termination) {
         case TerminationState.JAD_KILLED:
-            // Big bonus for winning, with time bonus for faster kills
             reward += 100.0;
-            reward += Math.max(0, (600 - episodeLength) * 0.2); // Up to +120 for fast kills
             break;
         case TerminationState.PLAYER_DIED:
             // Penalty reduced by progress made (damage dealt to Jads)
             const totalJadHpRemaining = obs.jads.reduce((sum, jad) => sum + Math.max(0, jad.hp), 0);
             const maxJadHp = obs.jads.length * 350;
             const damageDealt = maxJadHp - totalJadHpRemaining;
-            const progressBonus = damageDealt * 0.1; // Up to 70 bonus for dealing 700 damage
+            const progressBonus = damageDealt * 0.1;
             reward -= 100.0;
             reward += progressBonus;
             break;
