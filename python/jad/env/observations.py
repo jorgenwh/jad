@@ -20,15 +20,18 @@ def get_observation_dim(config: JadConfig) -> int:
     healer_count = jad_count * healers_per_jad
 
     player_continuous = 9
+    next_projectile_continuous = 1  # ticks until next landing
     player_target_onehot = 1 + jad_count + healer_count
     active_prayer_onehot = 4
+    next_projectile_onehot = 4  # none, mage, range, melee
     jad_continuous = 4 * jad_count  # hp, x, y, ticks_until_impact per jad
     jad_attack_onehot = 4 * jad_count
     healer_continuous = 3 * healer_count
     healer_target_onehot = 3 * healer_count
     binary = 2
 
-    return (player_continuous + player_target_onehot + active_prayer_onehot +
+    return (player_continuous + next_projectile_continuous +
+            player_target_onehot + active_prayer_onehot + next_projectile_onehot +
             jad_continuous + jad_attack_onehot +
             healer_continuous + healer_target_onehot + binary)
 
@@ -40,10 +43,11 @@ def get_continuous_feature_count(config: JadConfig) -> int:
     total_healers = jad_count * healers_per_jad
 
     player_continuous = 9
+    next_projectile_continuous = 1  # ticks until next landing
     jad_continuous = 4 * jad_count  # hp, x, y, ticks_until_impact
     healer_continuous = 3 * total_healers
 
-    return player_continuous + jad_continuous + healer_continuous
+    return player_continuous + next_projectile_continuous + jad_continuous + healer_continuous
 
 
 def get_normalize_mask(config: JadConfig) -> np.ndarray:
@@ -107,6 +111,11 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
         obs.player_location_y / MAX_COORD,
     ], dtype=np.float32)
 
+    # Next projectile continuous (1 feature)
+    next_projectile_continuous = np.array([
+        obs.next_projectile_ticks / JAD_PROJECTILE_DELAY,
+    ], dtype=np.float32)
+
     # Jad continuous (4 * jad_count features)
     jad_continuous = []
     for jad in obs.jads:
@@ -137,6 +146,9 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
     # Active prayer one-hot (4: none, mage, range, melee)
     active_prayer_onehot = one_hot(obs.active_prayer, 4)
 
+    # Next projectile type one-hot (4: none, mage, range, melee)
+    next_projectile_type_onehot = one_hot(obs.next_projectile_type, 4)
+
     # Per-Jad attack one-hot (4 * jad_count) - non-zero while projectile in flight
     jad_attack_onehot = []
     for jad in obs.jads:
@@ -159,10 +171,12 @@ def obs_to_array(obs: Observation, config: JadConfig) -> np.ndarray:
     # Concatenate all features
     return np.concatenate([
         player_continuous,
+        next_projectile_continuous,
         jad_continuous,
         healer_continuous,
         player_target_onehot,
         active_prayer_onehot,
+        next_projectile_type_onehot,
         jad_attack_onehot,
         healer_target_onehot,
         binary,

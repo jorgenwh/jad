@@ -73,6 +73,10 @@ class Observation:
     # Whether any healers have spawned
     healers_spawned: bool = False
 
+    # Derived: the soonest-landing projectile across all Jads
+    next_projectile_type: int = 0   # 0=none, 1=mage, 2=range, 3=melee
+    next_projectile_ticks: int = 0  # 0=none, 1-3=ticks remaining
+
     # Starting doses for normalization
     starting_bastion_doses: int = 4
     starting_sara_brew_doses: int = 4

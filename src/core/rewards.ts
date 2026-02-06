@@ -192,7 +192,7 @@ registerRewardFunction(
     }
 
     // Prayer reward/penalty (triggered when projectile lands)
-    reward += prayerLandingReward(obs, prevObs, 1.5, -3.0);
+    reward += prayerLandingReward(obs, prevObs, 2.0, -2.0);
 
     // Penalty for not being in combat - prevents stalling
     if (obs.player_target === 0) {
@@ -204,22 +204,16 @@ registerRewardFunction(
         reward -= 0.1;
     }
 
-    // Constant time pressure to discourage stalling
-    reward -= 0.3;
-
-    // HP delta only for the Jad the player is currently targeting
-    // Avoids penalizing the agent for healer healing on non-focused Jads
-    if (obs.player_target > 0 && obs.player_target <= obs.jads.length) {
-        const targetIdx = obs.player_target - 1;
-        const hpDelta = prevObs.jads[targetIdx].hp - obs.jads[targetIdx].hp;
-        reward += hpDelta * 0.3;
+    // Reward for dealing damage to any Jad (positive only - no penalty for healer healing)
+    for (let i = 0; i < obs.jads.length; i++) {
+        const hpDelta = prevObs.jads[i].hp - obs.jads[i].hp;
+        if (hpDelta > 0) {
+            reward += hpDelta * 0.3;
+        }
     }
 
     // Reward for tagging healers off Jad (one-time bonus per healer)
     reward += healerTagReward(obs, prevObs);
-
-    // Penalty for each healer still targeting Jad (encourages tagging healers)
-    reward -= healerTargetingJadPenalty(obs, 0.5);
 
     // Large reward for each Jad killed
     reward += jadKillReward(obs, prevObs, 200.0);

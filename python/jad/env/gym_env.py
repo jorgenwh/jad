@@ -14,7 +14,7 @@ BASE_EPISODE_LENGTH = 300  # Per-jad episode length cap during training
 TRUNCATION_PENALTIES = {
     "default": -150.0,
     "sparse": -1.0,
-    "multijad": -150.0,
+    "multijad": -50.0,
 }
 
 

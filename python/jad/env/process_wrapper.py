@@ -132,6 +132,9 @@ class EnvProcessWrapper:
             healers=healers,
             healers_spawned=obs.get("healers_spawned", False),
 
+            next_projectile_type=obs.get("next_projectile_type", 0),
+            next_projectile_ticks=obs.get("next_projectile_ticks", 0),
+
             bastion_doses=obs.get("bastion_doses", 0),
             sara_brew_doses=obs.get("sara_brew_doses", 0),
             super_restore_doses=obs.get("super_restore_doses", 0),

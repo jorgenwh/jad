@@ -161,6 +161,18 @@ export function buildObservation(
     const { healers, healersSpawned } = getHealerStates(jadRegion, config);
     const { bastionDoses, saraBrewDoses, superRestoreDoses } = countPotionDoses(player);
 
+    // Find the soonest-landing projectile across all Jads
+    let nextProjectileType = 0;
+    let nextProjectileTicks = 0;
+    for (const jad of jads) {
+        if (jad.ticks_until_impact > 0) {
+            if (nextProjectileTicks === 0 || jad.ticks_until_impact < nextProjectileTicks) {
+                nextProjectileType = jad.attack;
+                nextProjectileTicks = jad.ticks_until_impact;
+            }
+        }
+    }
+
     return {
         player_hp: player?.currentStats?.hitpoint ?? 0,
         player_prayer: player?.currentStats?.prayer ?? 0,
@@ -176,6 +188,9 @@ export function buildObservation(
         jads,
         healers,
         healers_spawned: healersSpawned,
+
+        next_projectile_type: nextProjectileType,
+        next_projectile_ticks: nextProjectileTicks,
 
         bastion_doses: bastionDoses,
         sara_brew_doses: saraBrewDoses,

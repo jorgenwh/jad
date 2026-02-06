@@ -34,6 +34,32 @@ export function togglePrayer(player: Player, prayerName: string): void {
     }
 }
 
+/**
+ * Set prayer. If already active, does nothing.
+ * If inactive, activates it (which deactivates other protection prayers).
+ * Unlike togglePrayer, this never turns a prayer OFF.
+ */
+export function setPrayer(player: Player, prayerName: string): void {
+    const prayerController = player.prayerController;
+    if (!prayerController) {
+        return;
+    }
+
+    const targetPrayer = prayerController.findPrayerByName(prayerName);
+    if (!targetPrayer) {
+        return;
+    }
+
+    if (targetPrayer.isActive) {
+        return; // Already on, nothing to do
+    }
+
+    // Can't activate prayers with 0 prayer points
+    if ((player.currentStats?.prayer ?? 0) > 0) {
+        targetPrayer.activate(player);
+    }
+}
+
 export function drinkPotion(player: Player, potionType: string): void {
     if (!player || !player.inventory) {
         return;
@@ -80,20 +106,21 @@ function attackHealer(player: Player, jadRegion: JadRegion, jadIndex: number, he
 
 /**
  * Execute protection prayer action (head 0).
- * Uses toggle semantics - click to toggle the prayer on/off.
+ * Uses SET semantics - action ensures the prayer is active.
+ * Sending the same prayer that's already active is a safe no-op.
  */
 function executeProtectionPrayer(action: number, player: Player): void {
     switch (action) {
         case ProtectionPrayerAction.NO_OP:
             break;
         case ProtectionPrayerAction.PROTECT_MAGIC:
-            togglePrayer(player, 'Protect from Magic');
+            setPrayer(player, 'Protect from Magic');
             break;
         case ProtectionPrayerAction.PROTECT_RANGE:
-            togglePrayer(player, 'Protect from Range');
+            setPrayer(player, 'Protect from Range');
             break;
         case ProtectionPrayerAction.PROTECT_MELEE:
-            togglePrayer(player, 'Protect from Melee');
+            setPrayer(player, 'Protect from Melee');
             break;
     }
 }

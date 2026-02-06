@@ -50,6 +50,10 @@ export interface Observation {
     healers: HealerState[];
     healers_spawned: boolean;
 
+    // Derived: the soonest-landing projectile across all Jads
+    next_projectile_type: number;   // 0=none, 1=mage, 2=range, 3=melee
+    next_projectile_ticks: number;  // 0=none, 1-3=ticks remaining
+
     bastion_doses: number;
     sara_brew_doses: number;
     super_restore_doses: number;

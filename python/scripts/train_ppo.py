@@ -30,6 +30,9 @@ class EpisodeStatsCallback(BaseCallback):
         save_path: str = "checkpoints/best_sb3.pt",
         normalizer_path: str = "checkpoints/normalizer_sb3.npz",
         tensorboard_log: str | None = None,
+        ent_coef_start: float | None = None,
+        ent_coef_end: float | None = None,
+        ent_anneal_steps: int = 0,
         verbose: int = 1,
     ):
         super().__init__(verbose)
@@ -40,6 +43,11 @@ class EpisodeStatsCallback(BaseCallback):
         self.save_path = save_path
         self.normalizer_path = normalizer_path
         self.best_mean_reward = float("-inf")
+
+        # Entropy annealing config
+        self.ent_coef_start = ent_coef_start
+        self.ent_coef_end = ent_coef_end
+        self.ent_anneal_steps = ent_anneal_steps
 
         # TensorBoard writer
         self.tb_writer = SummaryWriter(tensorboard_log) if tensorboard_log else None
@@ -63,6 +71,11 @@ class EpisodeStatsCallback(BaseCallback):
         self.start_time = time.time()
 
     def _on_step(self) -> bool:
+        # Entropy annealing
+        if self.ent_anneal_steps > 0 and self.ent_coef_start is not None and self.ent_coef_end is not None:
+            progress = min(1.0, self.num_timesteps / self.ent_anneal_steps)
+            self.model.ent_coef = self.ent_coef_start + (self.ent_coef_end - self.ent_coef_start) * progress
+
         # Accumulate normalized rewards per env
         rewards = self.locals.get("rewards", [])
         for i, r in enumerate(rewards):
@@ -134,7 +147,8 @@ class EpisodeStatsCallback(BaseCallback):
         print(f"  Reward:  {mean_raw_reward:+.1f} avg  (min/max: {min_raw:+.0f}/{max_raw:+.0f})")
         print(f"  Length:  {mean_length:.0f} avg  (min/max: {min_len}/{max_len})")
         print(f"  Wins:    {wins}/{self.log_interval}  |  Jad kills: {total_jads_killed}/{max_possible_kills}")
-        print(f"  Steps:   {self.num_timesteps:,}  |  Time: {elapsed_str}")
+        ent_str = f"  |  ent_coef: {self.model.ent_coef:.4f}" if self.ent_anneal_steps > 0 else ""
+        print(f"  Steps:   {self.num_timesteps:,}  |  Time: {elapsed_str}{ent_str}")
 
         # Log to TensorBoard (grouped metrics appear on same plot)
         if self.tb_writer:
@@ -157,6 +171,9 @@ class EpisodeStatsCallback(BaseCallback):
             }, self.total_episodes)
 
             self.tb_writer.add_scalar("win_rate", wins / self.log_interval, self.total_episodes)
+
+            if self.ent_anneal_steps > 0:
+                self.tb_writer.add_scalar("ent_coef", self.model.ent_coef, self.total_episodes)
 
             # Log summary stats as text (viewable in Text tab)
             self.tb_writer.add_text("progress",
@@ -196,7 +213,9 @@ def train(
     gamma: float = 0.99,
     gae_lambda: float = 0.95,
     clip_range: float = 0.2,
-    ent_coef: float = 0.01,
+    ent_coef: float | None = None,
+    ent_coef_end: float | None = None,
+    ent_anneal_steps: int | None = None,
     vf_coef: float = 0.5,
     max_grad_norm: float = 0.5,
     lstm_hidden_size: int = 64,
@@ -220,7 +239,9 @@ def train(
         gamma: Discount factor
         gae_lambda: GAE lambda
         clip_range: PPO clip range
-        ent_coef: Entropy coefficient
+        ent_coef: Entropy coefficient (or starting value if annealing)
+        ent_coef_end: Final entropy coefficient after annealing (None = no annealing)
+        ent_anneal_steps: Steps over which to linearly anneal entropy (0 = no annealing)
         vf_coef: Value function coefficient
         max_grad_norm: Max gradient norm for clipping
         lstm_hidden_size: LSTM hidden layer size
@@ -229,6 +250,15 @@ def train(
         reward_func: Reward function to use (default, sparse, prayer_only, aggressive)
         tensorboard_log: Directory for TensorBoard logs (None to disable)
     """
+    # Auto-configure entropy based on jad count if not explicitly set.
+    # Multi-Jad needs higher initial entropy for exploration, annealed down for precision.
+    if ent_coef is None:
+        ent_coef = 0.05 if jad_count >= 2 else 0.01
+    if ent_anneal_steps is None:
+        ent_anneal_steps = jad_count * 500_000 if jad_count >= 2 else 0
+    if ent_coef_end is None and ent_anneal_steps > 0:
+        ent_coef_end = 0.005
+
     # Create config
     config = JadConfig(jad_count=jad_count, healers_per_jad=healers_per_jad)
     obs_dim = get_observation_dim(config)
@@ -302,6 +332,11 @@ def train(
     print(f"  Epochs per update: {n_epochs}")
     print(f"  Device: {model.device}")
 
+    if ent_anneal_steps > 0 and ent_coef_end is not None:
+        print(f"  Entropy: {ent_coef} -> {ent_coef_end} over {ent_anneal_steps:,} steps")
+    else:
+        print(f"  Entropy: {ent_coef} (constant)")
+
     # Create TensorBoard log directory with unique run name
     tb_log_path = None
     if tensorboard_log:
@@ -319,6 +354,9 @@ def train(
         save_path=str(model_save_path),
         normalizer_path=str(normalizer_path),
         tensorboard_log=tb_log_path,
+        ent_coef_start=ent_coef if (ent_anneal_steps > 0 and ent_coef_end is not None) else None,
+        ent_coef_end=ent_coef_end,
+        ent_anneal_steps=ent_anneal_steps,
         verbose=1,
     )
 
@@ -387,6 +425,24 @@ def main():
         help="Minibatch size for PPO updates (default: 128)",
     )
     parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=None,
+        help="Entropy coefficient, or starting value if annealing (default: auto based on jad count)",
+    )
+    parser.add_argument(
+        "--ent-coef-end",
+        type=float,
+        default=None,
+        help="Final entropy coefficient after annealing (default: auto based on jad count)",
+    )
+    parser.add_argument(
+        "--ent-anneal-steps",
+        type=int,
+        default=None,
+        help="Steps over which to linearly anneal entropy (default: auto based on jad count)",
+    )
+    parser.add_argument(
         "--checkpoint-dir",
         type=str,
         default="checkpoints",
@@ -421,6 +477,9 @@ def main():
         total_timesteps=args.timesteps,
         n_steps=args.n_steps,
         batch_size=args.batch_size,
+        ent_coef=args.ent_coef,
+        ent_coef_end=args.ent_coef_end,
+        ent_anneal_steps=args.ent_anneal_steps,
         lstm_hidden_size=args.lstm_hidden_size,
         checkpoint_dir=args.checkpoint_dir,
         resume_path=args.resume,

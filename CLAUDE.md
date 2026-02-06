@@ -56,7 +56,7 @@ The environment uses a **MultiDiscrete** action space with 4 heads, allowing sim
 | 3 | `target` | 1+N+N*H | 0=no-op, 1..N=jad, N+1..=healer |
 
 **Action semantics:**
-- Protection prayer: toggle semantics (click to toggle prayer on/off)
+- Protection prayer: set semantics (idempotent - ensures prayer is active, safe to repeat)
 - Offensive prayer: toggle semantics (click to toggle Rigour)
 - Potion: drink specified potion
 - Target: switch to specified target (no-op keeps current)
