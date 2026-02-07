@@ -156,7 +156,7 @@ register('jad3', (
         return reward;
     }
 
-    reward += prayerLandingReward(obs, prevObs, 2.0, -2.0);
+    reward += prayerLandingReward(obs, prevObs, 8.0, -8.0);
 
     if (obs.player_target === 0) {
         reward -= 1.0;
