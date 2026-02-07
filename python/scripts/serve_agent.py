@@ -98,6 +98,7 @@ class AgentServer:
             JadState(
                 hp=j.get("hp", 0),
                 attack=j.get("attack", 0),
+                ticks_until_impact=j.get("ticks_until_impact", 0),
                 x=j.get("x", 0),
                 y=j.get("y", 0),
                 alive=j.get("alive", False),
@@ -140,6 +141,10 @@ class AgentServer:
             jads=jads,
             healers=healers,
             healers_spawned=obs_dict.get("healers_spawned", False),
+
+            # Next projectile
+            next_projectile_type=obs_dict.get("next_projectile_type", 0),
+            next_projectile_ticks=obs_dict.get("next_projectile_ticks", 0),
 
             # Starting doses for normalization
             starting_bastion_doses=obs_dict.get("starting_bastion_doses", 4),
