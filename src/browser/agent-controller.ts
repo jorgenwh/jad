@@ -23,6 +23,7 @@ export class AgentController {
     private jadRegion: JadRegion;
     private config: JadConfig;
 
+    private rewardFunc: string;
     private startingDoses = { bastion: 0, saraBrew: 0, superRestore: 0 };
     private prevObservation: Observation | null = null;
     private cumulativeReward = 0;
@@ -33,6 +34,7 @@ export class AgentController {
         this.player = player;
         this.jadRegion = jadRegion;
         this.config = config;
+        this.rewardFunc = config.jadCount >= 3 ? 'jad3' : config.jadCount === 2 ? 'jad2' : 'jad1';
 
         this.ws = new AgentWebSocket();
         this.ui = new AgentUI();
@@ -61,7 +63,8 @@ export class AgentController {
                 obs,
                 this.prevObservation,
                 TerminationState.ONGOING,
-                this.episodeLength
+                this.episodeLength,
+                this.rewardFunc
             );
             this.cumulativeReward += reward;
             this.episodeLength++;
@@ -109,7 +112,8 @@ export class AgentController {
                 obs,
                 this.prevObservation,
                 state,
-                this.episodeLength
+                this.episodeLength,
+                this.rewardFunc
             );
             this.cumulativeReward += reward
 
