@@ -24,7 +24,7 @@ function parseJadConfig(): JadConfig {
 }
 
 function parseEnvConfig(): EnvConfig {
-    const rewardFunc = process.env.REWARD_FUNC || 'default';
+    const rewardFunc = process.env.REWARD_FUNC || 'jad1';
     return { rewardFunc };
 }
 

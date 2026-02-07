@@ -7,7 +7,7 @@ from jad.types import JadConfig, Observation, StepResult, JadState, HealerState
 
 
 class EnvProcessWrapper:
-    def __init__(self, config: JadConfig | None = None, reward_func: str = "default"):
+    def __init__(self, config: JadConfig | None = None, *, reward_func: str):
         self._proc: subprocess.Popen | None = None
         self._script_dir = Path(__file__).parent
         self._config = config or JadConfig()

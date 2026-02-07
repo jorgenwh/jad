@@ -12,7 +12,7 @@ from jad.env import make_jad_env, get_observation_dim, SelectiveVecNormalize
 
 
 # Available reward functions (defined in TypeScript src/core/rewards.ts)
-REWARD_FUNCTIONS = ['default', 'sparse', 'multijad']
+REWARD_FUNCTIONS = ['sparse', 'jad1', 'jad2', 'jad3']
 
 
 class EpisodeStatsCallback(BaseCallback):
@@ -221,7 +221,7 @@ def train(
     lstm_hidden_size: int = 64,
     checkpoint_dir: str = "checkpoints",
     resume_path: str | None = None,
-    reward_func: str = "default",
+    reward_func: str | None = None,
     tensorboard_log: str | None = "runs",
 ):
     """
@@ -247,9 +247,18 @@ def train(
         lstm_hidden_size: LSTM hidden layer size
         checkpoint_dir: Directory for saving checkpoints
         resume_path: Path to .zip checkpoint to resume training from
-        reward_func: Reward function to use (default, sparse, prayer_only, aggressive)
+        reward_func: Reward function to use (None = auto based on jad_count)
         tensorboard_log: Directory for TensorBoard logs (None to disable)
     """
+    # Auto-select reward function based on jad count if not explicitly set.
+    if reward_func is None:
+        if jad_count >= 3:
+            reward_func = "jad3"
+        elif jad_count == 2:
+            reward_func = "jad2"
+        else:
+            reward_func = "jad1"
+
     # Auto-configure entropy based on jad count if not explicitly set.
     # Multi-Jad needs higher initial entropy for exploration, annealed down for precision.
     if ent_coef is None:
@@ -457,9 +466,9 @@ def main():
     parser.add_argument(
         "--reward-func",
         type=str,
-        default="default",
+        default=None,
         choices=REWARD_FUNCTIONS,
-        help=f"Reward function to use (default: default). Available: {REWARD_FUNCTIONS}",
+        help=f"Reward function to use (default: auto based on jad count). Available: {REWARD_FUNCTIONS}",
     )
     parser.add_argument(
         "--tensorboard-log",

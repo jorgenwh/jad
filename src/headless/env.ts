@@ -15,12 +15,8 @@ import {
 } from '../core';
 
 export interface EnvConfig {
-    rewardFunc?: string;
+    rewardFunc: string;
 }
-
-const DEFAULT_ENV_CONFIG: EnvConfig = {
-    rewardFunc: 'default',
-};
 
 export class HeadlessEnv {
     private world: World;
@@ -39,7 +35,7 @@ export class HeadlessEnv {
     constructor(
         createRegionFunc: (config: JadConfig) => Region,
         jadConfig: JadConfig = DEFAULT_CONFIG,
-        envConfig: EnvConfig = DEFAULT_ENV_CONFIG
+        envConfig: EnvConfig
     ) {
         this.jadConfig = jadConfig;
         this.envConfig = envConfig;

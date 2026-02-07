@@ -11,4 +11,4 @@ export { getRangedLoadout, getMeleeLoadout } from './loadout';
 export * from './utils';
 export * from './observation';
 export * from './actions';
-export * from './rewards';
+export * from './reward';

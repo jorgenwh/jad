@@ -12,9 +12,10 @@ from jad.env.observations import obs_to_array, get_observation_dim
 BASE_EPISODE_LENGTH = 300  # Per-jad episode length cap during training
 
 TRUNCATION_PENALTIES = {
-    "default": -150.0,
     "sparse": -1.0,
-    "multijad": -50.0,
+    "jad1": -150.0,
+    "jad2": -50.0,
+    "jad3": -50.0,
 }
 
 
@@ -24,7 +25,8 @@ class JadGymEnv(gym.Env):
     def __init__(
         self,
         config: JadConfig | None = None,
-        reward_func: str = "default",
+        *,
+        reward_func: str,
     ):
         super().__init__()
 
@@ -110,7 +112,7 @@ class JadGymEnv(gym.Env):
         self.env.close()
 
 
-def make_jad_env(config: JadConfig | None = None, reward_func: str = "default"):
+def make_jad_env(config: JadConfig | None = None, *, reward_func: str):
     """Factory function for creating JadGymEnv instances wrapped with Monitor."""
     def _init():
         env = JadGymEnv(config=config, reward_func=reward_func)
